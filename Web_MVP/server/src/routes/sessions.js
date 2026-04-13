@@ -65,24 +65,43 @@ router.put('/:id/complete', async (req, res) => {
     });
   }
 
-  const { data: session, error } = await supabase
-    .from('focus_sessions')
-    .update({
-      status: 'completed',
-      actual_duration,
-      completed_at: new Date().toISOString()
-    })
-    .eq('id', sessionId)
-    .eq('user_id', userId)
-    .select()
-    .single();
+  // Start a transaction-like operation
+  try {
+    // 1. Complete the session
+    const { data: session, error: sessionError } = await supabase
+      .from('focus_sessions')
+      .update({
+        status: 'completed',
+        actual_duration,
+        completed_at: new Date().toISOString()
+      })
+      .eq('id', sessionId)
+      .eq('user_id', userId)
+      .select()
+      .single();
 
-  if (error || !session) {
-    console.error('[sessions/complete]', error);
-    return res.status(404).json({ error: 'Session not found or unauthorized' });
+    if (sessionError || !session) {
+      console.error('[sessions/complete]', sessionError);
+      return res.status(404).json({ error: 'Session not found or unauthorized' });
+    }
+
+    // 2. Update user's cumulative stats
+    const { error: userError } = await supabase.rpc('update_user_stats', {
+      p_user_id: userId,
+      p_duration: actual_duration,
+      p_mode: session.mode
+    });
+
+    if (userError) {
+      console.error('[sessions/update_user_stats]', userError);
+      // Continue even if user stats update fails (non-critical)
+    }
+
+    return res.json({ session });
+  } catch (err) {
+    console.error('[sessions/complete]', err);
+    return res.status(500).json({ error: 'Failed to complete session' });
   }
-
-  return res.json({ session });
 });
 
 // DELETE /api/sessions/:id — abandon a session

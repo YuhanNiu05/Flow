@@ -27,13 +27,15 @@ router.get('/', async (req, res) => {
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
   const weekStart = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Run queries in parallel
-  const [allRes, todayRes, weekRes] = await Promise.all([
-    supabase
-      .from('focus_sessions')
-      .select('mode, actual_duration')
-      .eq('user_id', userId)
-      .eq('status', 'completed'),
+  // Get user's cumulative stats from users table (fast)
+  const { data: userData, error: userError } = await supabase
+    .from('users')
+    .select('total_study_duration, total_exercise_duration, total_sessions')
+    .eq('id', userId)
+    .single();
+
+  // Get today and week stats from sessions (still need to calculate)
+  const [todayRes, weekRes] = await Promise.all([
     supabase
       .from('focus_sessions')
       .select('actual_duration')
@@ -48,18 +50,23 @@ router.get('/', async (req, res) => {
       .gte('completed_at', weekStart)
   ]);
 
-  if (allRes.error || todayRes.error || weekRes.error) {
-    console.error('[stats]', allRes.error || todayRes.error || weekRes.error);
+  if (userError && userError.code !== 'PGRST116') {
+    console.error('[stats]', userError);
+  }
+
+  if (todayRes.error || weekRes.error) {
+    console.error('[stats]', todayRes.error || weekRes.error);
     return res.status(500).json({ error: 'Failed to fetch stats' });
   }
 
-  const all = allRes.data;
-  const totalSessions = all.length;
-  const totalDuration = all.reduce((s, r) => s + (r.actual_duration || 0), 0);
-  const studyDuration = all.filter(r => r.mode === 'study').reduce((s, r) => s + (r.actual_duration || 0), 0);
-  const exerciseDuration = all.filter(r => r.mode === 'exercise').reduce((s, r) => s + (r.actual_duration || 0), 0);
   const todayDuration = todayRes.data.reduce((s, r) => s + (r.actual_duration || 0), 0);
   const weekDuration = weekRes.data.reduce((s, r) => s + (r.actual_duration || 0), 0);
+  
+  // Use cumulative stats if available, otherwise calculate from sessions
+  const studyDuration = userData?.total_study_duration || 0;
+  const exerciseDuration = userData?.total_exercise_duration || 0;
+  const totalSessions = userData?.total_sessions || 0;
+  const totalDuration = studyDuration + exerciseDuration;
 
   return res.json({
     total_sessions: totalSessions,

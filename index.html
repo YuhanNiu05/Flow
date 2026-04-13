@@ -382,32 +382,52 @@
 
 <!-- VIEW: TIMER -->
 <div id="view-timer" class="view">
-  <div class="timer-arena" id="timer-arena">
+  <div class="timer-arena" id="timer-arena" style="display:flex; flex-direction:column; align-items:center; justify-content:flex-start; padding-top:0;">
     <div class="timer-particles" id="timer-particles"></div>
-    <div class="timer-mode-badge study" id="timer-mode-badge">学习模式</div>
-    <div id="timer-forward-wrap">
-      <div class="timer-clock study" id="timer-clock">00:00</div>
+    
+    <!-- 顶部元素 - 学习模式徽章（往上移） -->
+    <div style="position:relative; z-index:5; text-align:center; padding:15px 0 8px;">
+      <span id="timer-mode-badge" style="display:inline-block; font-family:'Orbitron',sans-serif; font-size:16px; letter-spacing:3px; color:#64c8ff; border:2px solid rgba(100,200,255,0.5); border-radius:18px; padding:8px 24px; box-shadow:0 0 16px rgba(100,200,255,0.35); font-weight:600;">📚 学习模式</span>
     </div>
-    <div id="timer-countdown-wrap" style="display:none">
-      <div class="progress-ring-wrap">
-        <svg class="progress-ring" width="260" height="260">
-          <circle class="progress-ring-track" cx="130" cy="130" r="120"/>
-          <circle class="progress-ring-bar study" id="progress-ring-bar" cx="130" cy="130" r="120"
-            stroke-dasharray="753.98" stroke-dashoffset="0"/>
-        </svg>
-        <div class="timer-clock study" id="timer-clock-cd">00:00</div>
+    
+    <!-- 中间星球元素（尺寸变大） -->
+    <div class="planet-stage" style="position:relative; width:65vw; height:65vw; max-width:500px; max-height:500px; z-index:4; margin:10px 0;">
+      <div class="planet-rings r2" style="width:140%; height:140%; top:50%; left:50%; transform:translate(-50%, -50%);"></div>
+      <div class="planet-rings r1" style="width:120%; height:120%; top:50%; left:50%; transform:translate(-50%, -50%);"></div>
+      <div class="planet-orb stage-0" id="timer-planet-orb" style="width:100%; height:100%;"></div>
+    </div>
+    
+    <!-- 计时显示区域（往下移） -->
+    <div style="position:relative; z-index:5; width:100%; text-align:center; margin-top:20px;">
+      <div id="timer-forward-wrap">
+        <div class="timer-clock study" id="timer-clock" style="font-size:clamp(42px, 8vw, 85px); letter-spacing:4px;">00:00</div>
+      </div>
+      <div id="timer-countdown-wrap" style="display:none; justify-content:center;">
+        <div class="progress-ring-wrap">
+          <svg class="progress-ring" width="220" height="220">
+            <circle class="progress-ring-track" cx="110" cy="110" r="100"/>
+            <circle class="progress-ring-bar study" id="progress-ring-bar" cx="110" cy="110" r="100"
+              stroke-dasharray="628.32" stroke-dashoffset="0"/>
+          </svg>
+          <div class="timer-clock study" id="timer-clock-cd" style="font-size:clamp(32px, 6.5vw, 65px); letter-spacing:3px;">00:00</div>
+        </div>
+      </div>
+      
+      <div class="timer-label" id="timer-label" style="margin-bottom:15px;">专注中...</div>
+      
+      <!-- 控制按钮 - 居中显示（移到数字和提示中间） -->
+      <div class="timer-controls" style="margin:55px 0 20px; display:flex; justify-content:center; gap:12px;">
+        <button class="btn btn-ghost" id="btn-pause" onclick="App.pauseTimer()" style="padding:10px 22px; font-size:14px;">
+          <i class="fas fa-pause"></i> 暂停
+        </button>
+        <button class="btn btn-danger" onclick="App.stopFocus()" style="padding:10px 22px; font-size:14px;">
+          <i class="fas fa-stop"></i> 结束
+        </button>
       </div>
     </div>
-    <div class="timer-label" id="timer-label">专注中...</div>
-    <div class="timer-controls">
-      <button class="btn btn-ghost" id="btn-pause" onclick="App.pauseTimer()">
-        <i class="fas fa-pause"></i> 暂停
-      </button>
-      <button class="btn btn-danger" onclick="App.stopFocus()">
-        <i class="fas fa-stop"></i> 结束
-      </button>
-    </div>
-    <div class="timer-hw-note" id="timer-hw-note"></div>
+    
+    <!-- 底部提示 -->
+    <div class="timer-hw-note" id="timer-hw-note" style="margin-top:auto; padding-bottom:30px; position:relative; z-index:5;"></div>
   </div>
 </div>
 
@@ -655,7 +675,8 @@ const App = (() => {
     const mode=state.selectedMode;
     document.getElementById('timer-arena').className='timer-arena '+mode+'-bg';
     const badge=document.getElementById('timer-mode-badge');
-    badge.className='timer-mode-badge '+mode;
+    if(mode==='study'){badge.style.color='#64c8ff';badge.style.borderColor='rgba(100,200,255,0.3)';}
+    else{badge.style.color='#ff8c3c';badge.style.borderColor='rgba(255,140,60,0.3)';}
     badge.textContent=mode==='study'?'📚 学习模式':'🏃 运动模式';
     ['timer-clock','timer-clock-cd'].forEach(id=>{document.getElementById(id).className='timer-clock '+mode;});
     document.getElementById('progress-ring-bar').className='progress-ring-bar '+mode;
@@ -666,6 +687,11 @@ const App = (() => {
     state.isPaused=false;
     document.getElementById('btn-pause').innerHTML='<i class="fas fa-pause"></i> 暂停';
     document.getElementById('timer-label').textContent='专注中...';
+    
+    // 初始化星球状态
+    const totalSeconds=state.timerType==='forward'?state.timerSeconds:(state.countdownMinutes*60-state.timerSeconds);
+    updateTimerPlanet(totalSeconds);
+    
     updateTimerDisplay(); clearParticles(); createParticles(mode);
     document.getElementById('timer-hw-note').textContent=state.hwConnected?'✅ M5Stack 已同步':'提示：翻转 M5Stack 也可触发专注模式';
   }
@@ -690,6 +716,24 @@ const App = (() => {
       const circ=2*Math.PI*120;
       document.getElementById('progress-ring-bar').style.strokeDashoffset=circ*(1-state.timerSeconds/(state.countdownMinutes*60));
     }
+    
+    // 更新星球状态
+    const totalSeconds=state.timerType==='forward'?state.timerSeconds:(state.countdownMinutes*60-state.timerSeconds);
+    updateTimerPlanet(totalSeconds);
+  }
+  
+  function updateTimerPlanet(seconds){
+    const orb=document.getElementById('timer-planet-orb');
+    if(!orb)return;
+    
+    // 根据专注时长计算星球阶段
+    let stage=0;
+    if(seconds>=900) stage=3; // 15分钟
+    else if(seconds>=300) stage=2; // 5分钟
+    else if(seconds>=60) stage=1; // 1分钟
+    
+    // 更新星球样式
+    orb.className='planet-orb stage-'+stage;
   }
 
   function pauseTimer(){
