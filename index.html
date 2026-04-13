@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FlowCube · 心流魔方</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Noto+Sans+SC:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg-dark:   #0d0d1a;  --bg-card:   rgba(20,20,38,0.85);
+      --border:    rgba(100,200,255,0.18);  --blue:  #64c8ff;
+      --green:     #00ff88;  --orange:    #ff8c3c;
+      --purple:    #c88fff;  --text:      #e0e0e0;
+      --text-dim:  #8899aa;  --danger:    #ff4466;
+      --radius-lg: 20px;     --radius-md: 14px;
+      --radius-sm: 10px;     --shadow:    0 8px 32px rgba(0,0,0,0.45);
+    }
+    body { font-family:'Noto Sans SC','Orbitron',sans-serif; background:var(--bg-dark); color:var(--text); min-height:100vh; overflow-x:hidden; }
+    body::before {
+      content:''; position:fixed; inset:0;
+      background-image:
+        radial-gradient(1px 1px at 20% 30%,rgba(255,255,255,0.4) 0%,transparent 100%),
+        radial-gradient(1px 1px at 80% 10%,rgba(255,255,255,0.3) 0%,transparent 100%),
+        radial-gradient(1px 1px at 45% 75%,rgba(255,255,255,0.35) 0%,transparent 100%),
+        radial-gradient(2px 2px at 15% 60%,rgba(100,200,255,0.3) 0%,transparent 100%),
+        radial-gradient(2px 2px at 90% 80%,rgba(150,100,255,0.25) 0%,transparent 100%);
+      pointer-events:none; z-index:0;
+    }
+    .view { display:none; min-height:100vh; position:relative; z-index:1; }
+    .view.active { display:flex; }
+    .card { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); backdrop-filter:blur(16px); box-shadow:var(--shadow); }
+    .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:14px 28px; border-radius:var(--radius-md); border:2px solid transparent; font-family:inherit; font-size:15px; font-weight:600; cursor:pointer; transition:all 0.25s ease; text-transform:uppercase; letter-spacing:1px; }
+    .btn:disabled { opacity:.45; cursor:not-allowed; }
+    .btn-primary { background:linear-gradient(135deg,rgba(100,200,255,0.2),rgba(100,200,255,0.1)); border-color:var(--blue); color:var(--blue); }
+    .btn-primary:hover:not(:disabled) { background:rgba(100,200,255,0.25); box-shadow:0 0 18px rgba(100,200,255,0.4); }
+    .btn-success { background:linear-gradient(135deg,rgba(0,255,136,0.2),rgba(0,255,136,0.1)); border-color:var(--green); color:var(--green); }
+    .btn-success:hover:not(:disabled) { background:rgba(0,255,136,0.25); box-shadow:0 0 18px rgba(0,255,136,0.4); }
+    .btn-danger  { background:linear-gradient(135deg,rgba(255,68,102,0.2),rgba(255,68,102,0.1)); border-color:var(--danger); color:var(--danger); }
+    .btn-danger:hover:not(:disabled)  { background:rgba(255,68,102,0.25); box-shadow:0 0 18px rgba(255,68,102,0.4); }
+    .btn-ghost   { background:transparent; border-color:var(--border); color:var(--text-dim); }
+    .btn-ghost:hover:not(:disabled)   { border-color:var(--blue); color:var(--blue); }
+    .form-group { display:flex; flex-direction:column; gap:8px; }
+    .form-label { font-size:13px; color:var(--text-dim); letter-spacing:0.5px; }
+    .form-input { padding:13px 16px; background:rgba(255,255,255,0.05); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-family:inherit; font-size:15px; outline:none; transition:border-color 0.2s,box-shadow 0.2s; }
+    .form-input:focus { border-color:var(--blue); box-shadow:0 0 10px rgba(100,200,255,0.2); }
+    .form-input::placeholder { color:var(--text-dim); opacity:0.6; }
+    .orbitron { font-family:'Orbitron',sans-serif; }
+    .glow-blue   { text-shadow:0 0 15px rgba(100,200,255,0.6); color:var(--blue); }
+    .glow-green  { text-shadow:0 0 15px rgba(0,255,136,0.6);   color:var(--green); }
+    .glow-orange { text-shadow:0 0 15px rgba(255,140,60,0.6);  color:var(--orange); }
+    .glow-purple { text-shadow:0 0 15px rgba(200,136,255,0.6); color:var(--purple); }
+    .error-msg { background:rgba(255,68,102,0.12); border:1px solid rgba(255,68,102,0.3); border-radius:var(--radius-sm); padding:10px 14px; font-size:14px; color:var(--danger); display:none; }
+    .error-msg.show { display:block; }
+    #toast { position:fixed; bottom:28px; left:50%; transform:translateX(-50%) translateY(80px); background:rgba(20,20,38,0.95); border:1px solid var(--border); border-radius:var(--radius-md); padding:12px 24px; font-size:14px; color:var(--text); z-index:9999; transition:transform 0.3s,opacity 0.3s; opacity:0; white-space:nowrap; box-shadow:var(--shadow); }
+    #toast.show { transform:translateX(-50%) translateY(0); opacity:1; }
+    #progress-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); backdrop-filter:blur(4px); z-index:8888; align-items:center; justify-content:center; }
+    #progress-overlay.show { display:flex; }
+    .spinner { width:48px; height:48px; border:3px solid var(--border); border-top-color:var(--blue); border-radius:50%; animation:spin 0.8s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    /* AUTH */
+    #view-auth { flex-direction:column; align-items:center; justify-content:center; padding:24px; }
+    .auth-card { width:100%; max-width:420px; padding:40px 36px; }
+    .auth-logo { text-align:center; margin-bottom:32px; }
+    .auth-logo .logo-title { font-family:'Orbitron',sans-serif; font-size:28px; font-weight:900; color:var(--blue); text-shadow:0 0 20px rgba(100,200,255,0.5); letter-spacing:4px; }
+    .auth-logo .logo-sub   { font-size:12px; color:var(--text-dim); letter-spacing:3px; margin-top:4px; }
+    .auth-tabs { display:flex; background:rgba(255,255,255,0.04); border-radius:var(--radius-sm); padding:4px; margin-bottom:28px; }
+    .auth-tab  { flex:1; padding:10px; text-align:center; border-radius:8px; cursor:pointer; font-size:14px; font-weight:600; color:var(--text-dim); transition:all 0.2s; }
+    .auth-tab.active { background:rgba(100,200,255,0.15); color:var(--blue); box-shadow:0 0 10px rgba(100,200,255,0.2); }
+    .auth-form-panel { display:none; }
+    .auth-form-panel.active { display:flex; flex-direction:column; gap:18px; }
+    .auth-footer { text-align:center; margin-top:20px; font-size:13px; color:var(--text-dim); }
+    .auth-footer a { color:var(--blue); cursor:pointer; text-decoration:none; }
+    /* HOME */
+    #view-home { flex-direction:column; min-height:100vh; }
+    .home-header { display:flex; align-items:center; justify-content:space-between; padding:20px 28px; border-bottom:1px solid var(--border); background:rgba(13,13,26,0.7); backdrop-filter:blur(10px); position:sticky; top:0; z-index:10; gap:12px; flex-wrap:wrap; }
+    .home-header .brand { font-family:'Orbitron',sans-serif; font-size:18px; font-weight:700; color:var(--blue); letter-spacing:3px; text-shadow:0 0 12px rgba(100,200,255,0.4); }
+    .header-right { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .user-info { display:flex; align-items:center; gap:10px; font-size:14px; color:var(--text-dim); }
+    .avatar { width:36px; height:36px; background:linear-gradient(135deg,var(--blue),var(--purple)); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:700; color:var(--bg-dark); }
+    .hw-badge { display:inline-flex; align-items:center; gap:6px; padding:6px 14px; border-radius:20px; font-size:12px; border:1px solid; transition:all 0.3s; }
+    .hw-badge.disconnected { border-color:var(--text-dim); color:var(--text-dim); }
+    .hw-badge.connected    { border-color:var(--green); color:var(--green); box-shadow:0 0 8px rgba(0,255,136,0.25); }
+    .hw-badge .dot { width:7px; height:7px; border-radius:50%; background:currentColor; }
+    .hw-badge.connected .dot { animation:blink 1.2s ease-in-out infinite; }
+    @keyframes blink { 0%,100%{opacity:1}50%{opacity:0.3} }
+    .home-body { flex:1; padding:32px 24px; max-width:720px; margin:0 auto; width:100%; }
+    .home-greeting { margin-bottom:28px; }
+    .greet-line1 { font-size:24px; font-weight:700; }
+    .greet-line2 { font-size:14px; color:var(--text-dim); margin-top:4px; }
+    .stats-bar { display:flex; gap:12px; margin-bottom:36px; flex-wrap:wrap; }
+    .stats-bar-item { flex:1; min-width:110px; padding:16px 20px; border-radius:var(--radius-md); background:rgba(255,255,255,0.04); border:1px solid var(--border); }
+    .stats-bar-item .val { font-family:'Orbitron',sans-serif; font-size:22px; font-weight:700; color:var(--blue); }
+    .stats-bar-item .lbl { font-size:12px; color:var(--text-dim); margin-top:2px; }
+    .entry-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:18px; }
+    .entry-card { padding:28px 20px; border-radius:var(--radius-lg); cursor:pointer; transition:all 0.3s; text-align:center; border:1px solid var(--border); background:var(--bg-card); backdrop-filter:blur(14px); position:relative; overflow:hidden; }
+    .entry-card::before { content:''; position:absolute; inset:0; opacity:0; transition:opacity 0.3s; border-radius:inherit; }
+    .entry-card:hover { transform:translateY(-4px); box-shadow:0 12px 40px rgba(0,0,0,0.5); }
+    .entry-card.card-focus::before  { background:radial-gradient(ellipse at 50% 0%,rgba(0,255,136,0.12) 0%,transparent 70%); }
+    .entry-card.card-planet::before { background:radial-gradient(ellipse at 50% 0%,rgba(100,200,255,0.12) 0%,transparent 70%); }
+    .entry-card.card-stats::before  { background:radial-gradient(ellipse at 50% 0%,rgba(200,136,255,0.12) 0%,transparent 70%); }
+    .entry-card:hover::before { opacity:1; }
+    .entry-card .icon  { font-size:42px; margin-bottom:14px; display:block; }
+    .entry-card .title { font-size:17px; font-weight:700; margin-bottom:6px; }
+    .entry-card .desc  { font-size:12px; color:var(--text-dim); line-height:1.5; }
+    .entry-card.card-focus  .title { color:var(--green); }
+    .entry-card.card-planet .title { color:var(--blue); }
+    .entry-card.card-stats  .title { color:var(--purple); }
+    /* MODE SELECT */
+    #view-mode { flex-direction:column; align-items:center; justify-content:center; padding:28px 20px; gap:28px; }
+    .view-header { width:100%; max-width:660px; display:flex; align-items:center; gap:16px; }
+    .back-btn { width:40px; height:40px; border-radius:50%; border:1px solid var(--border); background:var(--bg-card); color:var(--text-dim); font-size:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; flex-shrink:0; }
+    .back-btn:hover { border-color:var(--blue); color:var(--blue); }
+    .view-title { font-family:'Orbitron',sans-serif; font-size:20px; font-weight:700; color:var(--blue); letter-spacing:2px; }
+    .mode-cards { display:grid; grid-template-columns:1fr 1fr; gap:20px; width:100%; max-width:660px; }
+    .mode-card { padding:32px 24px; border-radius:var(--radius-lg); cursor:pointer; transition:all 0.3s; border:2px solid transparent; text-align:center; }
+    .mode-card.study-card    { background:linear-gradient(145deg,rgba(0,100,160,0.25),rgba(0,60,90,0.15)); border-color:rgba(100,200,255,0.25); }
+    .mode-card.exercise-card { background:linear-gradient(145deg,rgba(160,60,0,0.25),rgba(90,30,0,0.15)); border-color:rgba(255,140,60,0.25); }
+    .mode-card.study-card:hover,.mode-card.study-card.selected       { border-color:var(--blue); box-shadow:0 0 28px rgba(100,200,255,0.25); transform:translateY(-3px); }
+    .mode-card.exercise-card:hover,.mode-card.exercise-card.selected { border-color:var(--orange); box-shadow:0 0 28px rgba(255,140,60,0.25); transform:translateY(-3px); }
+    .mode-card .mode-icon { font-size:52px; margin-bottom:14px; }
+    .mode-card .mode-name { font-size:20px; font-weight:700; margin-bottom:8px; }
+    .mode-card.study-card    .mode-name { color:var(--blue); }
+    .mode-card.exercise-card .mode-name { color:var(--orange); }
+    .mode-card .mode-desc { font-size:13px; color:var(--text-dim); line-height:1.6; }
+    .timer-type-section { width:100%; max-width:660px; display:flex; flex-direction:column; gap:14px; }
+    .section-title { font-size:13px; color:var(--text-dim); letter-spacing:1px; text-transform:uppercase; }
+    .timer-type-row { display:flex; gap:12px; }
+    .timer-type-btn { flex:1; padding:16px 12px; border-radius:var(--radius-md); border:2px solid var(--border); background:rgba(255,255,255,0.04); color:var(--text-dim); font-family:inherit; font-size:14px; font-weight:600; cursor:pointer; transition:all 0.2s; text-align:center; }
+    .timer-type-btn.selected { border-color:var(--blue); color:var(--blue); background:rgba(100,200,255,0.1); }
+    .timer-type-btn i { display:block; font-size:22px; margin-bottom:6px; }
+    .countdown-setup { display:none; flex-direction:column; gap:12px; padding:20px; background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:var(--radius-md); }
+    .countdown-setup.show { display:flex; }
+    .countdown-setup label { font-size:13px; color:var(--text-dim); }
+    .duration-presets { display:flex; gap:8px; flex-wrap:wrap; }
+    .preset-btn { padding:8px 16px; border-radius:20px; border:1px solid var(--border); background:transparent; color:var(--text-dim); font-family:inherit; font-size:13px; cursor:pointer; transition:all 0.2s; }
+    .preset-btn:hover,.preset-btn.selected { border-color:var(--blue); color:var(--blue); background:rgba(100,200,255,0.1); }
+    .custom-dur-row { display:flex; align-items:center; gap:10px; }
+    .custom-dur-row input[type="number"] { width:80px; padding:8px 12px; background:rgba(255,255,255,0.05); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-family:inherit; font-size:16px; text-align:center; outline:none; }
+    .custom-dur-row input[type="number"]:focus { border-color:var(--blue); }
+    .custom-dur-row span { color:var(--text-dim); font-size:14px; }
+    /* TIMER */
+    #view-timer { flex-direction:column; align-items:center; min-height:100vh; }
+    .timer-arena { flex:1; width:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; position:relative; transition:background 2s; padding:40px 24px; }
+    .timer-arena.study-bg    { background:radial-gradient(ellipse at 50% 30%,rgba(0,80,140,0.35) 0%,rgba(13,13,26,1) 70%); }
+    .timer-arena.exercise-bg { background:radial-gradient(ellipse at 50% 30%,rgba(140,50,0,0.35) 0%,rgba(13,13,26,1) 70%); }
+    .timer-particles { position:absolute; inset:0; pointer-events:none; overflow:hidden; }
+    .timer-mode-badge { font-family:'Orbitron',sans-serif; font-size:13px; letter-spacing:3px; text-transform:uppercase; padding:6px 18px; border-radius:20px; border:1px solid; margin-bottom:28px; position:relative; z-index:5; }
+    .timer-mode-badge.study    { color:var(--blue); border-color:var(--blue); box-shadow:0 0 12px rgba(100,200,255,0.25); }
+    .timer-mode-badge.exercise { color:var(--orange); border-color:var(--orange); box-shadow:0 0 12px rgba(255,140,60,0.25); }
+    .timer-clock { font-family:'Orbitron',sans-serif; font-size:clamp(60px,14vw,110px); font-weight:900; letter-spacing:6px; position:relative; z-index:5; line-height:1; }
+    .timer-clock.study    { color:#00d4ff; text-shadow:0 0 40px rgba(0,212,255,0.6); }
+    .timer-clock.exercise { color:var(--orange); text-shadow:0 0 40px rgba(255,140,60,0.6); }
+    .progress-ring-wrap { position:relative; z-index:5; display:flex; align-items:center; justify-content:center; }
+    .progress-ring-wrap .timer-clock { position:absolute; }
+    .progress-ring { transform:rotate(-90deg); }
+    .progress-ring-track { fill:none; stroke:rgba(255,255,255,0.08); stroke-width:4; }
+    .progress-ring-bar   { fill:none; stroke-width:4; stroke-linecap:round; transition:stroke-dashoffset 0.9s linear; }
+    .progress-ring-bar.study    { stroke:#00d4ff; filter:drop-shadow(0 0 6px rgba(0,212,255,0.5)); }
+    .progress-ring-bar.exercise { stroke:var(--orange); filter:drop-shadow(0 0 6px rgba(255,140,60,0.5)); }
+    .timer-label    { font-size:13px; color:var(--text-dim); letter-spacing:2px; margin-top:8px; position:relative; z-index:5; }
+    .timer-controls { display:flex; gap:16px; margin-top:36px; position:relative; z-index:5; }
+    .timer-hw-note  { margin-top:20px; font-size:12px; color:var(--text-dim); text-align:center; position:relative; z-index:5; }
+    @keyframes float-up   { 0%{transform:translateY(0) translateX(0);opacity:.85}100%{transform:translateY(-110vh) translateX(var(--tx));opacity:0} }
+    @keyframes pulse-glow { 0%,100%{transform:scale(1);opacity:.8}50%{transform:scale(1.6);opacity:1} }
+    @keyframes slide-in   { from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:none} }
+    /* PLANET */
+    #view-planet { flex-direction:column; align-items:center; padding:24px 20px; gap:20px; }
+    .planet-stage { width:100%; max-width:600px; height:280px; border-radius:var(--radius-lg); position:relative; overflow:hidden; background:linear-gradient(160deg,#1a1a3a 0%,#0d0d1a 100%); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; }
+    .planet-orb { width:140px; height:140px; border-radius:50%; transition:all 1s; box-shadow:0 0 60px currentColor; }
+    .planet-orb.stage-0 { background:radial-gradient(circle at 35% 35%,#3a3a4a,#1a1a2a); color:#444; }
+    .planet-orb.stage-1 { background:radial-gradient(circle at 35% 35%,#1a3a2a,#0a1a12); color:#00ff88; }
+    .planet-orb.stage-2 { background:radial-gradient(circle at 35% 35%,#1a4a3a,#0a2a1a); color:#00d4ff; }
+    .planet-orb.stage-3 { background:radial-gradient(circle at 35% 35%,#2a5a4a,#1a3a2a); color:var(--green); }
+    .planet-rings { position:absolute; border:2px solid; border-radius:50%; opacity:.2; animation:spin 20s linear infinite; }
+    .planet-rings.r1 { width:200px; height:200px; color:var(--blue); }
+    .planet-rings.r2 { width:240px; height:240px; color:var(--purple); animation-duration:30s; animation-direction:reverse; }
+    .planet-info { width:100%; max-width:600px; padding:24px; border-radius:var(--radius-lg); background:var(--bg-card); border:1px solid var(--border); display:flex; flex-direction:column; gap:18px; }
+    .planet-name { font-family:'Orbitron',sans-serif; font-size:18px; font-weight:700; color:var(--blue); }
+    .planet-lore { font-size:14px; color:var(--text-dim); line-height:1.7; }
+    .health-bar-wrap { display:flex; flex-direction:column; gap:6px; }
+    .health-bar-label { display:flex; justify-content:space-between; font-size:13px; color:var(--text-dim); }
+    .health-bar-track { height:8px; background:rgba(255,255,255,0.08); border-radius:4px; overflow:hidden; }
+    .health-bar-fill  { height:100%; border-radius:4px; background:linear-gradient(90deg,var(--green),var(--blue)); transition:width 1s; box-shadow:0 0 8px rgba(0,255,136,0.4); }
+    .planet-stage-label { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--text-dim); }
+    .stage-dot { width:8px; height:8px; border-radius:50%; background:var(--green); box-shadow:0 0 6px rgba(0,255,136,0.6); }
+    /* STATS */
+    #view-stats { flex-direction:column; align-items:center; padding:24px 20px; gap:20px; }
+    .stats-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; width:100%; max-width:660px; }
+    .stat-card { padding:20px 16px; border-radius:var(--radius-md); background:var(--bg-card); border:1px solid var(--border); text-align:center; }
+    .stat-card .stat-val { font-family:'Orbitron',sans-serif; font-size:26px; font-weight:900; margin-bottom:4px; }
+    .stat-card .stat-lbl { font-size:12px; color:var(--text-dim); }
+    .mode-breakdown { width:100%; max-width:660px; padding:20px; border-radius:var(--radius-lg); background:var(--bg-card); border:1px solid var(--border); }
+    .breakdown-title { font-size:14px; color:var(--text-dim); margin-bottom:14px; letter-spacing:1px; text-transform:uppercase; }
+    .breakdown-row { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+    .breakdown-row .lbl { font-size:13px; width:56px; flex-shrink:0; }
+    .breakdown-row .bar { flex:1; height:10px; background:rgba(255,255,255,0.06); border-radius:5px; overflow:hidden; }
+    .breakdown-row .bar-fill { height:100%; border-radius:5px; transition:width 1s; }
+    .breakdown-row.study-row    .bar-fill { background:linear-gradient(90deg,#0080ff,#00d4ff); }
+    .breakdown-row.exercise-row .bar-fill { background:linear-gradient(90deg,#ff5500,var(--orange)); }
+    .breakdown-row .pct { font-size:12px; color:var(--text-dim); width:36px; text-align:right; }
+    .session-history { width:100%; max-width:660px; padding:20px; border-radius:var(--radius-lg); background:var(--bg-card); border:1px solid var(--border); }
+    .history-title { font-size:14px; color:var(--text-dim); margin-bottom:14px; letter-spacing:1px; text-transform:uppercase; }
+    .history-item { display:flex; align-items:center; gap:14px; padding:12px 0; border-bottom:1px solid rgba(255,255,255,0.05); animation:slide-in 0.3s ease; }
+    .history-item:last-child { border-bottom:none; }
+    .history-mode-icon { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; }
+    .history-mode-icon.study    { background:rgba(100,200,255,0.15); color:var(--blue); }
+    .history-mode-icon.exercise { background:rgba(255,140,60,0.15);  color:var(--orange); }
+    .history-item-info { flex:1; }
+    .history-item-info .hi-mode { font-size:14px; font-weight:600; }
+    .history-item-info .hi-date { font-size:12px; color:var(--text-dim); margin-top:2px; }
+    .history-item-dur { font-family:'Orbitron',sans-serif; font-size:14px; font-weight:700; color:var(--green); }
+    /* DIALOG */
+    .dialog-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.65); backdrop-filter:blur(10px); z-index:500; align-items:center; justify-content:center; padding:20px; }
+    .dialog-overlay.show { display:flex; }
+    .dialog-box { background:linear-gradient(145deg,rgba(20,20,38,0.97),rgba(30,15,45,0.97)); border:2px solid rgba(150,100,200,0.4); border-radius:28px; padding:44px 36px; max-width:460px; width:100%; text-align:center; box-shadow:0 16px 64px rgba(0,0,0,0.6); animation:slide-in 0.4s ease; }
+    .dialog-icon  { font-size:56px; margin-bottom:16px; }
+    .dialog-title { font-family:'Orbitron',sans-serif; font-size:22px; font-weight:700; color:var(--purple); text-shadow:0 0 15px rgba(200,136,255,0.4); margin-bottom:14px; letter-spacing:2px; }
+    .dialog-duration { font-family:'Orbitron',sans-serif; font-size:38px; font-weight:900; color:var(--green); text-shadow:0 0 20px rgba(0,255,136,0.5); margin-bottom:20px; }
+    .dialog-message  { font-size:16px; color:var(--text); line-height:1.8; margin-bottom:28px; font-weight:300; }
+    .dialog-actions  { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+    @media (max-width:600px) {
+      .mode-cards { grid-template-columns:1fr; }
+      .timer-controls { flex-wrap:wrap; justify-content:center; }
+      .auth-card { padding:28px 20px; }
+    }
+  </style>
+</head>
+<body>
+<div id="toast"></div>
+<div id="progress-overlay"><div class="spinner"></div></div>
+
+<!-- VIEW: AUTH -->
+<div id="view-auth" class="view">
+  <div class="auth-card card">
+    <div class="auth-logo">
+      <div class="logo-title orbitron">FLOWCUBE</div>
+      <div class="logo-sub">心流魔方 · 专注成就星球</div>
+    </div>
+    <div class="auth-tabs">
+      <div class="auth-tab active" onclick="App.switchAuthTab('login')" id="tab-login">登录</div>
+      <div class="auth-tab" onclick="App.switchAuthTab('register')" id="tab-register">注册</div>
+    </div>
+    <div class="auth-form-panel active" id="panel-login">
+      <div class="error-msg" id="login-error"></div>
+      <div class="form-group">
+        <label class="form-label">电子邮箱</label>
+        <input class="form-input" id="login-email" type="email" placeholder="your@email.com" autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label class="form-label">密码</label>
+        <input class="form-input" id="login-password" type="password" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <button class="btn btn-primary" style="width:100%" onclick="App.login()">
+        <i class="fas fa-sign-in-alt"></i> 进入星球
+      </button>
+    </div>
+    <div class="auth-form-panel" id="panel-register">
+      <div class="error-msg" id="register-error"></div>
+      <div class="form-group">
+        <label class="form-label">用户名</label>
+        <input class="form-input" id="reg-username" type="text" placeholder="你的唤醒者称号" autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label class="form-label">电子邮箱</label>
+        <input class="form-input" id="reg-email" type="email" placeholder="your@email.com" autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label class="form-label">密码（至少 8 位）</label>
+        <input class="form-input" id="reg-password" type="password" placeholder="••••••••" autocomplete="new-password">
+      </div>
+      <div class="form-group">
+        <label class="form-label">确认密码</label>
+        <input class="form-input" id="reg-confirm" type="password" placeholder="••••••••" autocomplete="new-password">
+      </div>
+      <button class="btn btn-success" style="width:100%" onclick="App.register()">
+        <i class="fas fa-rocket"></i> 创建账号
+      </button>
+    </div>
+    <div class="auth-footer">
+      <p id="auth-switch-text">还没有账号？<a onclick="App.switchAuthTab('register')">立即注册</a></p>
+    </div>
+  </div>
+</div>
+
+<!-- VIEW: HOME -->
+<div id="view-home" class="view">
+  <div class="home-header">
+    <span class="brand orbitron">FLOWCUBE</span>
+    <div class="header-right">
+      <div class="hw-badge disconnected" id="hw-badge">
+        <div class="dot"></div>
+        <span id="hw-badge-text">M5Stack 未连接</span>
+      </div>
+      <div class="user-info">
+        <span id="home-username">唤醒者</span>
+        <div class="avatar" id="home-avatar">?</div>
+        <button class="btn btn-ghost" style="padding:8px 14px;font-size:12px" onclick="App.logout()">
+          <i class="fas fa-sign-out-alt"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="home-body">
+    <div class="home-greeting">
+      <div class="greet-line1" id="greet-text">你好，唤醒者</div>
+      <div class="greet-line2" id="greet-sub">这个赛博星球正等待你的心流能量</div>
+    </div>
+    <div class="stats-bar">
+      <div class="stats-bar-item"><div class="val orbitron" id="stat-today">0m</div><div class="lbl">今日专注</div></div>
+      <div class="stats-bar-item"><div class="val orbitron" id="stat-sessions">0</div><div class="lbl">本周次数</div></div>
+      <div class="stats-bar-item"><div class="val orbitron" id="stat-health">0%</div><div class="lbl">星球活力</div></div>
+    </div>
+    <div class="entry-grid">
+      <div class="entry-card card-focus" onclick="App.navigate('mode')">
+        <span class="icon">🎯</span>
+        <div class="title">开始专注</div>
+        <div class="desc">学习 · 运动<br>专注驱动星球成长</div>
+      </div>
+      <div class="entry-card card-planet" onclick="App.navigate('planet')">
+        <span class="icon">🌍</span>
+        <div class="title">我的星球</div>
+        <div class="desc">查看星球状态<br>见证你的改变</div>
+      </div>
+      <div class="entry-card card-stats" onclick="App.navigate('stats')">
+        <span class="icon">📊</span>
+        <div class="title">统计</div>
+        <div class="desc">专注记录 · 成长轨迹</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- VIEW: MODE SELECTION -->
+<div id="view-mode" class="view">
+  <div class="view-header">
+    <button class="back-btn" onclick="App.navigate('home')"><i class="fas fa-arrow-left"></i></button>
+    <span class="view-title orbitron">选择模式</span>
+  </div>
+  <div class="mode-cards">
+    <div class="mode-card study-card" id="mode-study-card" onclick="App.selectMode('study')">
+      <div class="mode-icon">📚</div>
+      <div class="mode-name">学习模式</div>
+      <div class="mode-desc">专注于学习、阅读或思考<br>蓝色心流修复星球土壤</div>
+    </div>
+    <div class="mode-card exercise-card" id="mode-exercise-card" onclick="App.selectMode('exercise')">
+      <div class="mode-icon">🏃</div>
+      <div class="mode-name">运动模式</div>
+      <div class="mode-desc">运动、健身或冥想<br>橙色活力激活星球生态</div>
+    </div>
+  </div>
+  <div class="timer-type-section">
+    <div class="section-title">计时方式</div>
+    <div class="timer-type-row">
+      <button class="timer-type-btn selected" id="tt-forward" onclick="App.selectTimerType('forward')">
+        <i class="fas fa-stopwatch"></i>正向计时
+      </button>
+      <button class="timer-type-btn" id="tt-countdown" onclick="App.selectTimerType('countdown')">
+        <i class="fas fa-hourglass-half"></i>倒计时
+      </button>
+    </div>
+    <div class="countdown-setup" id="countdown-setup">
+      <label>设定专注时长</label>
+      <div class="duration-presets">
+        <button class="preset-btn" onclick="App.setDurationPreset(15)">15 分钟</button>
+        <button class="preset-btn selected" onclick="App.setDurationPreset(25)">25 分钟</button>
+        <button class="preset-btn" onclick="App.setDurationPreset(45)">45 分钟</button>
+        <button class="preset-btn" onclick="App.setDurationPreset(60)">60 分钟</button>
+      </div>
+      <div class="custom-dur-row">
+        <span>或自定义</span>
+        <input type="number" id="custom-minutes" min="1" max="180" value="25">
+        <span>分钟</span>
+      </div>
+    </div>
+  </div>
+  <button class="btn btn-success" id="start-focus-btn" onclick="App.startFocus()" disabled>
+    <i class="fas fa-play"></i> 开始专注
+  </button>
+</div>
+
+<!-- VIEW: TIMER -->
+<div id="view-timer" class="view">
+  <div class="timer-arena" id="timer-arena">
+    <div class="timer-particles" id="timer-particles"></div>
+    <div class="timer-mode-badge study" id="timer-mode-badge">学习模式</div>
+    <div id="timer-forward-wrap">
+      <div class="timer-clock study" id="timer-clock">00:00</div>
+    </div>
+    <div id="timer-countdown-wrap" style="display:none">
+      <div class="progress-ring-wrap">
+        <svg class="progress-ring" width="260" height="260">
+          <circle class="progress-ring-track" cx="130" cy="130" r="120"/>
+          <circle class="progress-ring-bar study" id="progress-ring-bar" cx="130" cy="130" r="120"
+            stroke-dasharray="753.98" stroke-dashoffset="0"/>
+        </svg>
+        <div class="timer-clock study" id="timer-clock-cd">00:00</div>
+      </div>
+    </div>
+    <div class="timer-label" id="timer-label">专注中...</div>
+    <div class="timer-controls">
+      <button class="btn btn-ghost" id="btn-pause" onclick="App.pauseTimer()">
+        <i class="fas fa-pause"></i> 暂停
+      </button>
+      <button class="btn btn-danger" onclick="App.stopFocus()">
+        <i class="fas fa-stop"></i> 结束
+      </button>
+    </div>
+    <div class="timer-hw-note" id="timer-hw-note"></div>
+  </div>
+</div>
+
+<!-- VIEW: MY PLANET -->
+<div id="view-planet" class="view">
+  <div class="view-header" style="max-width:600px">
+    <button class="back-btn" onclick="App.navigate('home')"><i class="fas fa-arrow-left"></i></button>
+    <span class="view-title orbitron">我的星球</span>
+  </div>
+  <div class="planet-stage">
+    <div class="planet-rings r2"></div>
+    <div class="planet-rings r1"></div>
+    <div class="planet-orb stage-0" id="planet-orb"></div>
+  </div>
+  <div class="planet-info">
+    <div class="planet-name orbitron" id="planet-name">赛博荒星</div>
+    <div class="planet-lore" id="planet-lore">这颗星球曾经生机勃勃，却因信息爆炸而荒芜。你的专注力是修复它唯一的能量来源——"心流"。开始你的第一次专注，点亮它的第一束光。</div>
+    <div class="health-bar-wrap">
+      <div class="health-bar-label"><span>星球活力</span><span id="planet-health-pct">0%</span></div>
+      <div class="health-bar-track"><div class="health-bar-fill" id="planet-health-fill" style="width:0%"></div></div>
+    </div>
+    <div class="planet-stage-label"><div class="stage-dot"></div><span id="planet-stage-text">阶段 0 · 荒芜期</span></div>
+    <div style="font-size:13px;color:var(--text-dim)">累计专注：<span id="planet-total" class="orbitron glow-green">0m</span></div>
+  </div>
+</div>
+
+<!-- VIEW: STATS -->
+<div id="view-stats" class="view">
+  <div class="view-header" style="max-width:660px">
+    <button class="back-btn" onclick="App.navigate('home')"><i class="fas fa-arrow-left"></i></button>
+    <span class="view-title orbitron">统计</span>
+  </div>
+  <div class="stats-grid">
+    <div class="stat-card"><div class="stat-val orbitron glow-green"  id="s-total-time">0m</div><div class="stat-lbl">累计专注</div></div>
+    <div class="stat-card"><div class="stat-val orbitron glow-blue"   id="s-total-sessions">0</div><div class="stat-lbl">总次数</div></div>
+    <div class="stat-card"><div class="stat-val orbitron glow-orange" id="s-today">0m</div><div class="stat-lbl">今日专注</div></div>
+    <div class="stat-card"><div class="stat-val orbitron glow-purple" id="s-week">0m</div><div class="stat-lbl">本周专注</div></div>
+  </div>
+  <div class="mode-breakdown">
+    <div class="breakdown-title">模式分布</div>
+    <div class="breakdown-row study-row">
+      <span class="lbl glow-blue">📚 学习</span>
+      <div class="bar"><div class="bar-fill" id="bar-study" style="width:0%"></div></div>
+      <span class="pct" id="pct-study">0%</span>
+    </div>
+    <div class="breakdown-row exercise-row">
+      <span class="lbl glow-orange">🏃 运动</span>
+      <div class="bar"><div class="bar-fill" id="bar-exercise" style="width:0%"></div></div>
+      <span class="pct" id="pct-exercise">0%</span>
+    </div>
+  </div>
+  <div class="session-history">
+    <div class="history-title">最近记录</div>
+    <div id="history-list"><p style="color:var(--text-dim);font-size:14px">暂无记录，开始你的第一次专注吧！</p></div>
+  </div>
+</div>
+
+<!-- COMPLETION DIALOG -->
+<div class="dialog-overlay" id="completion-dialog">
+  <div class="dialog-box">
+    <div class="dialog-icon">✨</div>
+    <div class="dialog-title">心流已记录</div>
+    <div class="dialog-duration" id="dlg-duration">00:00</div>
+    <div class="dialog-message" id="dlg-message"></div>
+    <div class="dialog-actions">
+      <button class="btn btn-success" onclick="App.closeCompletionDialog(true)">
+        <i class="fas fa-redo"></i> 再来一次
+      </button>
+      <button class="btn btn-ghost" onclick="App.closeCompletionDialog(false)">
+        <i class="fas fa-home"></i> 返回首页
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+const App = (() => {
+  // API_BASE and WS_URL auto-detect to the current host in production;
+  // override via window.FLOWCUBE_API and window.FLOWCUBE_WS for custom deployments.
+  const API_BASE = window.FLOWCUBE_API || (location.hostname === 'localhost' || location.hostname === '127.0.0.1'
+    ? 'http://' + location.hostname + ':3000/api'
+    : location.origin + '/api');
+  const WS_URL = window.FLOWCUBE_WS || (location.hostname === 'localhost' || location.hostname === '127.0.0.1'
+    ? 'ws://' + location.hostname + ':3000/ws'
+    : (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws');
+
+  const state = {
+    currentView:'auth', authToken:null, user:null,
+    selectedMode:null, timerType:'forward', countdownMinutes:25,
+    timerSeconds:0, timerInterval:null, isPaused:false,
+    sessionId:null, ws:null, hwConnected:false
+  };
+
+  const healingMessages = [
+    "你刚刚专注了很久，星球上的风都变得温柔了。去喝杯水吧。",
+    "每一秒专注，都是种下的一粒种子。星球感受到了你的耐心。",
+    "你已经很努力了。让我们一起停下来，感受这份宁静。",
+    "专注就像灯塔之光，照亮了星球回家的路。你做得很好。",
+    "疲惫是信号，不是失败。给自己一个温暖的拥抱。",
+    "心流已经汇入星球。它的荒芜，正在一点一点被你融化。",
+    "这不是内卷，这是你与自己的对话。做得很好，唤醒者。"
+  ];
+
+  const stageConfig = [
+    { name:'赛博荒星', lore:'这颗星球曾经生机勃勃，却因信息爆炸而荒芜。你的专注力是修复它唯一的能量来源——"心流"。开始你的第一次专注，点亮它的第一束光。', threshold:0 },
+    { name:'萌芽星',   lore:'你的心流已经抵达星球，第一株荧光苔藓正在裂缝中悄悄萌芽。继续专注，让绿意蔓延更多荒地。', threshold:60 },
+    { name:'生机星',   lore:'星球开始复苏，稀疏的低多边形植物点缀着荒原。你的每一次专注，都在重写这颗星球的故事。', threshold:300 },
+    { name:'心流星',   lore:'荧光生态已经建立，星球在宇宙中绽放着温柔的光芒。你是真正的唤醒者。继续前行吧。', threshold:900 }
+  ];
+
+  function fmtClock(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;return h>0?`${p(h)}:${p(m)}:${p(sec)}`:`${p(m)}:${p(sec)}`;}
+  function p(n){return String(n).padStart(2,'0');}
+  function fmtDur(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60);if(h>0)return h+'h'+(m?(m+'m'):'');return m+'m '+(s%60)+'s';}
+  function fmtMins(s){const m=Math.floor(s/60),h=Math.floor(m/60);if(h>0)return h+'h'+(m%60?(m%60)+'m':'');return m+'m';}
+  function showToast(msg,ms=2800){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),ms);}
+  function setLoading(on){document.getElementById('progress-overlay').classList.toggle('show',on);}
+  function persist(k,v){try{localStorage.setItem('fc_'+k,JSON.stringify(v));}catch{}}
+  function retrieve(k){try{return JSON.parse(localStorage.getItem('fc_'+k));}catch{return null;}}
+  // 30 hours of total focus = 100% planet health
+  const MAX_HEALTH_SECONDS = 1800 * 60;
+  // Sessions shorter than this threshold are treated as accidental and abandoned
+  const MIN_SESSION_DURATION_SEC = 10;
+  function computeHealth(s){return Math.min(100,Math.round(s/MAX_HEALTH_SECONDS*100));}
+
+  function navigate(view){
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    document.getElementById('view-'+view).classList.add('active');
+    state.currentView=view;
+    if(view==='home')   loadHomeStats();
+    if(view==='planet') loadPlanet();
+    if(view==='stats')  loadStats();
+  }
+
+  function switchAuthTab(tab){
+    ['login','register'].forEach(t=>{
+      document.getElementById('tab-'+t).classList.toggle('active',t===tab);
+      document.getElementById('panel-'+t).classList.toggle('active',t===tab);
+    });
+    document.getElementById('auth-switch-text').innerHTML=tab==='login'
+      ?'还没有账号？<a onclick="App.switchAuthTab(\'register\')">立即注册</a>'
+      :'已有账号？<a onclick="App.switchAuthTab(\'login\')">立即登录</a>';
+    document.getElementById('login-error').classList.remove('show');
+    document.getElementById('register-error').classList.remove('show');
+  }
+
+  async function apiCall(path,opts={}){
+    const headers={'Content-Type':'application/json',...(opts.headers||{})};
+    if(state.authToken) headers['Authorization']='Bearer '+state.authToken;
+    const res=await fetch(API_BASE+path,{...opts,headers});
+    const data=await res.json().catch(()=>({}));
+    return {ok:res.ok,status:res.status,data};
+  }
+
+  function onAuthSuccess(user,token){
+    state.user=user; state.authToken=token;
+    persist('token',token); persist('user',user);
+    document.getElementById('home-username').textContent=user.username||'唤醒者';
+    document.getElementById('home-avatar').textContent=(user.username||'U')[0].toUpperCase();
+    document.getElementById('greet-text').textContent='你好，'+(user.username||'唤醒者');
+    connectWebSocket(); navigate('home');
+  }
+
+  async function login(){
+    const email=document.getElementById('login-email').value.trim();
+    const pwd=document.getElementById('login-password').value;
+    const errEl=document.getElementById('login-error');
+    errEl.classList.remove('show');
+    if(!email||!pwd){errEl.textContent='请填写邮箱和密码';errEl.classList.add('show');return;}
+    setLoading(true);
+    try{
+      const {ok,data}=await apiCall('/auth/login',{method:'POST',body:JSON.stringify({email,password:pwd})});
+      if(!ok) throw new Error(data.error||'登录失败');
+      onAuthSuccess(data.user,data.token);
+    }catch(e){
+      if(e.name==='TypeError'||e.name==='NetworkError'||e.message==='Failed to fetch'){onAuthSuccess({id:'offline-'+Date.now(),username:email.split('@')[0],email},'offline-token');showToast('离线演示模式');}
+      else{errEl.textContent=e.message;errEl.classList.add('show');}
+    }finally{setLoading(false);}
+  }
+
+  async function register(){
+    const username=document.getElementById('reg-username').value.trim();
+    const email=document.getElementById('reg-email').value.trim();
+    const pwd=document.getElementById('reg-password').value;
+    const confirm=document.getElementById('reg-confirm').value;
+    const errEl=document.getElementById('register-error');
+    errEl.classList.remove('show');
+    if(!username||!email||!pwd||!confirm){errEl.textContent='请填写所有字段';errEl.classList.add('show');return;}
+    if(pwd.length<8){errEl.textContent='密码至少 8 位';errEl.classList.add('show');return;}
+    if(pwd!==confirm){errEl.textContent='两次密码不一致';errEl.classList.add('show');return;}
+    setLoading(true);
+    try{
+      const {ok,data}=await apiCall('/auth/register',{method:'POST',body:JSON.stringify({username,email,password:pwd})});
+      if(!ok) throw new Error(data.error||'注册失败');
+      onAuthSuccess(data.user,data.token); showToast('账号创建成功！欢迎来到心流星球 🌍');
+    }catch(e){
+      if(e.name==='TypeError'||e.name==='NetworkError'||e.message==='Failed to fetch'){onAuthSuccess({id:'offline-'+Date.now(),username,email},'offline-token');showToast('离线演示模式');}
+      else{errEl.textContent=e.message;errEl.classList.add('show');}
+    }finally{setLoading(false);}
+  }
+
+  function logout(){
+    state.user=null;state.authToken=null;
+    persist('token',null);persist('user',null);
+    if(state.ws)state.ws.close();
+    stopTimer(); navigate('auth');
+  }
+
+  function selectMode(mode){
+    state.selectedMode=mode;
+    document.getElementById('mode-study-card').classList.toggle('selected',mode==='study');
+    document.getElementById('mode-exercise-card').classList.toggle('selected',mode==='exercise');
+    document.getElementById('start-focus-btn').disabled=false;
+  }
+
+  function selectTimerType(type){
+    state.timerType=type;
+    document.getElementById('tt-forward').classList.toggle('selected',type==='forward');
+    document.getElementById('tt-countdown').classList.toggle('selected',type==='countdown');
+    document.getElementById('countdown-setup').classList.toggle('show',type==='countdown');
+  }
+
+  function setDurationPreset(mins){
+    state.countdownMinutes=mins;
+    document.getElementById('custom-minutes').value=mins;
+    document.querySelectorAll('.preset-btn').forEach(b=>b.classList.toggle('selected',parseInt(b.textContent)===mins));
+  }
+
+  async function startFocus(){
+    if(!state.selectedMode){showToast('请先选择专注模式');return;}
+    if(state.timerType==='countdown'){
+      const mins=parseInt(document.getElementById('custom-minutes').value);
+      if(!mins||mins<1){showToast('请设定有效的时长');return;}
+      state.countdownMinutes=mins;
+    }
+    setLoading(true);
+    try{
+      const {ok,data}=await apiCall('/sessions',{method:'POST',body:JSON.stringify({mode:state.selectedMode,timer_type:state.timerType,planned_duration:state.timerType==='countdown'?state.countdownMinutes*60:null})});
+      state.sessionId=ok?data.session.id:('local-'+Date.now());
+    }catch{state.sessionId='local-'+Date.now();}
+    finally{setLoading(false);}
+    navigate('timer'); setupTimerView(); runTimer();
+  }
+
+  function setupTimerView(){
+    const mode=state.selectedMode;
+    document.getElementById('timer-arena').className='timer-arena '+mode+'-bg';
+    const badge=document.getElementById('timer-mode-badge');
+    badge.className='timer-mode-badge '+mode;
+    badge.textContent=mode==='study'?'📚 学习模式':'🏃 运动模式';
+    ['timer-clock','timer-clock-cd'].forEach(id=>{document.getElementById(id).className='timer-clock '+mode;});
+    document.getElementById('progress-ring-bar').className='progress-ring-bar '+mode;
+    const isCd=state.timerType==='countdown';
+    document.getElementById('timer-forward-wrap').style.display=isCd?'none':'block';
+    document.getElementById('timer-countdown-wrap').style.display=isCd?'block':'none';
+    state.timerSeconds=isCd?state.countdownMinutes*60:0;
+    state.isPaused=false;
+    document.getElementById('btn-pause').innerHTML='<i class="fas fa-pause"></i> 暂停';
+    document.getElementById('timer-label').textContent='专注中...';
+    updateTimerDisplay(); clearParticles(); createParticles(mode);
+    document.getElementById('timer-hw-note').textContent=state.hwConnected?'✅ M5Stack 已同步':'提示：翻转 M5Stack 也可触发专注模式';
+  }
+
+  function runTimer(){
+    if(state.timerInterval)clearInterval(state.timerInterval);
+    state.timerInterval=setInterval(()=>{
+      if(state.isPaused)return;
+      if(state.timerType==='forward'){state.timerSeconds++;}
+      else{state.timerSeconds--;if(state.timerSeconds<=0){state.timerSeconds=0;updateTimerDisplay();completeFocus();return;}}
+      updateTimerDisplay();
+    },1000);
+  }
+
+  function stopTimer(){if(state.timerInterval){clearInterval(state.timerInterval);state.timerInterval=null;}}
+
+  function updateTimerDisplay(){
+    const t=fmtClock(state.timerSeconds);
+    document.getElementById('timer-clock').textContent=t;
+    document.getElementById('timer-clock-cd').textContent=t;
+    if(state.timerType==='countdown'){
+      const circ=2*Math.PI*120;
+      document.getElementById('progress-ring-bar').style.strokeDashoffset=circ*(1-state.timerSeconds/(state.countdownMinutes*60));
+    }
+  }
+
+  function pauseTimer(){
+    state.isPaused=!state.isPaused;
+    document.getElementById('btn-pause').innerHTML=state.isPaused?'<i class="fas fa-play"></i> 继续':'<i class="fas fa-pause"></i> 暂停';
+    document.getElementById('timer-label').textContent=state.isPaused?'已暂停':'专注中...';
+  }
+
+  async function stopFocus(){
+    const elapsed=state.timerType==='forward'?state.timerSeconds:(state.countdownMinutes*60-state.timerSeconds);
+    if(elapsed<MIN_SESSION_DURATION_SEC){await abandonSession();stopTimer();clearParticles();navigate('mode');return;}
+    await completeFocus();
+  }
+
+  async function completeFocus(){
+    stopTimer();
+    const elapsed=state.timerType==='forward'?state.timerSeconds:(state.countdownMinutes*60-state.timerSeconds);
+    try{await apiCall('/sessions/'+state.sessionId+'/complete',{method:'PUT',body:JSON.stringify({actual_duration:elapsed})});}catch{}
+    const sess={id:state.sessionId||('local-'+Date.now()),mode:state.selectedMode,timer_type:state.timerType,actual_duration:elapsed,completed_at:new Date().toISOString()};
+    const saved=retrieve('sessions')||[];saved.unshift(sess);persist('sessions',saved.slice(0,200));
+    showCompletionDialog(elapsed);
+  }
+
+  async function abandonSession(){if(state.sessionId)try{await apiCall('/sessions/'+state.sessionId,{method:'DELETE'});}catch{}}
+
+  function showCompletionDialog(elapsed){
+    const msg=healingMessages[Math.floor(Math.random()*healingMessages.length)];
+    document.getElementById('dlg-duration').textContent=fmtClock(elapsed);
+    document.getElementById('dlg-message').textContent=msg;
+    document.getElementById('completion-dialog').classList.add('show');
+  }
+
+  function closeCompletionDialog(again){
+    document.getElementById('completion-dialog').classList.remove('show');
+    clearParticles();state.sessionId=null;
+    if(again)navigate('mode');else navigate('home');
+  }
+
+  function clearParticles(){document.getElementById('timer-particles').innerHTML='';}
+
+  function createParticles(mode){
+    const container=document.getElementById('timer-particles');
+    for(let i=0;i<(mode==='study'?35:55);i++){
+      const p=document.createElement('div');
+      p.style.cssText='position:absolute;border-radius:50%;pointer-events:none;';
+      const sz=Math.random()*5+2;p.style.width=p.style.height=sz+'px';
+      if(mode==='study'){
+        p.style.left=Math.random()*100+'%';p.style.bottom='-20px';
+        const c=Math.random()<0.5?'rgba(0,212,255,.85)':'rgba(0,255,136,.85)';
+        p.style.background=c;p.style.boxShadow='0 0 '+(sz*3)+'px '+c;
+        p.style.setProperty('--tx',(Math.random()-.5)*120+'px');
+        p.style.animation='float-up '+(Math.random()*7+8)+'s ease-in infinite';
+        p.style.animationDelay=Math.random()*10+'s';
+      }else{
+        p.style.left=Math.random()*100+'%';p.style.top=Math.random()*100+'%';
+        p.style.background='rgba(255,140,60,.9)';p.style.boxShadow='0 0 10px rgba(255,140,60,.9)';
+        p.style.animation='pulse-glow '+(Math.random()*2+1)+'s ease-in-out infinite';
+        p.style.animationDelay=Math.random()*2+'s';
+      }
+      container.appendChild(p);
+    }
+  }
+
+  async function loadHomeStats(){
+    const sessions=retrieve('sessions')||[];
+    const now=new Date();const todayStart=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+    const todayDur=sessions.filter(s=>new Date(s.completed_at)>=todayStart).reduce((a,s)=>a+(s.actual_duration||0),0);
+    const weekCount=sessions.filter(s=>Date.now()-new Date(s.completed_at)<7*86400000).length;
+    const totalDur=sessions.reduce((a,s)=>a+(s.actual_duration||0),0);
+    document.getElementById('stat-today').textContent=fmtMins(todayDur);
+    document.getElementById('stat-sessions').textContent=weekCount;
+    document.getElementById('stat-health').textContent=computeHealth(totalDur)+'%';
+    try{const {ok,data}=await apiCall('/stats');if(ok){document.getElementById('stat-today').textContent=fmtMins(data.today_duration);document.getElementById('stat-sessions').textContent=data.total_sessions;document.getElementById('stat-health').textContent=computeHealth(data.total_duration)+'%';}}catch{}
+  }
+
+  async function loadPlanet(){
+    const sessions=retrieve('sessions')||[];
+    let total=sessions.reduce((a,s)=>a+(s.actual_duration||0),0);
+    try{const {ok,data}=await apiCall('/stats');if(ok)total=data.total_duration;}catch{}
+    const health=computeHealth(total);
+    const totalMins=Math.floor(total/60);
+    let si=0;for(let i=stageConfig.length-1;i>=0;i--){if(totalMins>=stageConfig[i].threshold){si=i;break;}}
+    const st=stageConfig[si];
+    document.getElementById('planet-health-pct').textContent=health+'%';
+    document.getElementById('planet-health-fill').style.width=health+'%';
+    document.getElementById('planet-name').textContent=st.name;
+    document.getElementById('planet-lore').textContent=st.lore;
+    document.getElementById('planet-stage-text').textContent='阶段 '+si+' · '+['荒芜期','萌芽期','生机期','心流期'][si];
+    document.getElementById('planet-total').textContent=fmtMins(total);
+    document.getElementById('planet-orb').className='planet-orb stage-'+si;
+  }
+
+  async function loadStats(){
+    const sessions=retrieve('sessions')||[];
+    const now=new Date();const todayStart=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+    let st={total_duration:sessions.reduce((a,s)=>a+(s.actual_duration||0),0),total_sessions:sessions.length,study_duration:sessions.filter(s=>s.mode==='study').reduce((a,s)=>a+(s.actual_duration||0),0),exercise_duration:sessions.filter(s=>s.mode==='exercise').reduce((a,s)=>a+(s.actual_duration||0),0),today_duration:sessions.filter(s=>new Date(s.completed_at)>=todayStart).reduce((a,s)=>a+(s.actual_duration||0),0),week_duration:sessions.filter(s=>Date.now()-new Date(s.completed_at)<7*86400000).reduce((a,s)=>a+(s.actual_duration||0),0)};
+    try{const {ok,data}=await apiCall('/stats');if(ok)st={...st,...data};}catch{}
+    document.getElementById('s-total-time').textContent=fmtMins(st.total_duration);
+    document.getElementById('s-total-sessions').textContent=st.total_sessions;
+    document.getElementById('s-today').textContent=fmtMins(st.today_duration);
+    document.getElementById('s-week').textContent=fmtMins(st.week_duration);
+    const total=(st.study_duration+st.exercise_duration)||1;
+    const sp=Math.round(st.study_duration/total*100),ep=Math.round(st.exercise_duration/total*100);
+    document.getElementById('bar-study').style.width=sp+'%';document.getElementById('bar-exercise').style.width=ep+'%';
+    document.getElementById('pct-study').textContent=sp+'%';document.getElementById('pct-exercise').textContent=ep+'%';
+    let list=sessions;
+    try{const {ok,data}=await apiCall('/sessions?limit=20');if(ok&&data.sessions.length)list=data.sessions;}catch{}
+    const listEl=document.getElementById('history-list');
+    if(!list.length){listEl.innerHTML='<p style="color:var(--text-dim);font-size:14px">暂无记录，开始你的第一次专注吧！</p>';return;}
+    listEl.innerHTML=list.slice(0,15).map(s=>{
+      const dur=fmtDur(s.actual_duration||0);
+      const date=new Date(s.completed_at).toLocaleDateString('zh-CN',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+      return '<div class="history-item"><div class="history-mode-icon '+s.mode+'">'+(s.mode==='study'?'📚':'🏃')+'</div><div class="history-item-info"><div class="hi-mode">'+(s.mode==='study'?'学习':'运动')+'专注</div><div class="hi-date">'+date+'</div></div><div class="history-item-dur">'+dur+'</div></div>';
+    }).join('');
+  }
+
+  function connectWebSocket(){
+    if(!state.user)return;
+    const deviceId='app-'+(state.user.id||Date.now());
+    try{
+      const ws=new WebSocket(WS_URL);state.ws=ws;
+      ws.onopen=()=>ws.send(JSON.stringify({type:'handshake',client_type:'app',device_id:deviceId}));
+      ws.onmessage=evt=>{let msg;try{msg=JSON.parse(evt.data);}catch{return;}if(msg.type==='handshake_ack'){state.hwConnected=true;updateHwBadge(true);showToast('M5Stack 已连接 ✅');}if(msg.type==='orientation')handleHardwareFlip(msg.face);};
+      ws.onclose=()=>{state.hwConnected=false;state.ws=null;updateHwBadge(false);};
+      ws.onerror=()=>{state.ws=null;updateHwBadge(false);};
+    }catch{}
+  }
+
+  function updateHwBadge(connected){
+    const b=document.getElementById('hw-badge'),t=document.getElementById('hw-badge-text');
+    b.className='hw-badge '+(connected?'connected':'disconnected');
+    t.textContent=connected?'M5Stack 已连接':'M5Stack 未连接';
+  }
+
+  function handleHardwareFlip(face){
+    if((face==='study'||face==='exercise')&&!(state.currentView==='timer'&&state.timerInterval)){
+      showToast('M5Stack 翻转触发：'+(face==='study'?'学习模式 📚':'运动模式 🏃'));
+      state.selectedMode=face;state.timerType='forward';
+      navigate('timer');setupTimerView();runTimer();
+      apiCall('/sessions',{method:'POST',body:JSON.stringify({mode:face,timer_type:'forward',triggered_by:'m5stack'})}).then(r=>{if(r.ok)state.sessionId=r.data.session.id;}).catch(()=>{});
+    }else if(face==='rest'&&state.currentView==='timer'){stopFocus();}
+  }
+
+  function init(){
+    navigate('auth');
+    document.getElementById('login-password').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
+    document.getElementById('reg-confirm').addEventListener('keydown',e=>{if(e.key==='Enter')register();});
+    document.getElementById('custom-minutes').addEventListener('input',e=>{state.countdownMinutes=parseInt(e.target.value)||25;document.querySelectorAll('.preset-btn').forEach(b=>b.classList.remove('selected'));});
+    const token=retrieve('token'),user=retrieve('user');
+    if(token&&user&&token!=='null'){state.authToken=token;state.user=user;document.getElementById('home-username').textContent=user.username||'唤醒者';document.getElementById('home-avatar').textContent=(user.username||'U')[0].toUpperCase();document.getElementById('greet-text').textContent='你好，'+(user.username||'唤醒者');connectWebSocket();navigate('home');}
+  }
+
+  document.addEventListener('DOMContentLoaded',init);
+  return {navigate,switchAuthTab,login,register,logout,selectMode,selectTimerType,setDurationPreset,startFocus,pauseTimer,stopFocus,closeCompletionDialog};
+})();
+</script>
+</body>
+</html>

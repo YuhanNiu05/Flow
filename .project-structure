@@ -1,0 +1,38 @@
+flowcube/
+├── M5Stack_Hardware_Code/
+│   ├── src/
+│   │   ├── main.cpp
+│   │   ├── modules/
+│   │   │   ├── module1/
+│   │   │   │   ├── module1.a
+│   │   │   │   ├── module1.h
+│   │   │   └── module1.cpp
+│   │   └── libs/
+│   │       ├── library1/
+│   │       │   ├── library1.h
+│   │       │   └── library1.cpp
+│   │       └── library2/
+│   │           ├── library2.h
+│   │           └── library2.cpp
+│   ├── examples/
+│   └── tests/
+├── Unity_Game_Code/
+│   ├── Assets/
+│   │   ├── Scripts/
+│   │   ├── Prefabs/
+│   │   ├── Scenes/
+│   │   └── Materials/
+│   └── ProjectSettings/
+├── Web_MVP/
+│   ├── client/
+│   │   ├── src/
+│   │   ├── public/
+│   │   └── tests/
+│   └── server/
+│       ├── src/
+│       ├── tests/
+│       └── config/
+└── Documentation/
+    ├── User_Guide.md
+    ├── API_Reference.md
+    └── Changelog.md
