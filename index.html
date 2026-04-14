@@ -594,7 +594,7 @@ const App = (() => {
   const state = {
     currentView:'auth', authToken:null, user:null,
     selectedMode:null, timerType:'forward', countdownMinutes:25,
-    timerSeconds:0, timerInterval:null, isPaused:false,
+    timerSeconds:0, actualElapsed:0, timerInterval:null, isPaused:false,
     sessionId:null, ws:null, hwConnected:false,
     testMode:false, timeSpeedMultiplier:1
   };
@@ -812,6 +812,7 @@ const App = (() => {
     document.getElementById('timer-forward-wrap').style.display=isCd?'none':'block';
     document.getElementById('timer-countdown-wrap').style.display=isCd?'block':'none';
     state.timerSeconds=isCd?state.countdownMinutes*60:0;
+    state.actualElapsed=0;
     state.isPaused=false;
     document.getElementById('btn-pause').innerHTML='<i class="fas fa-pause"></i> 暂停';
     document.getElementById('timer-label').textContent='专注中...';
@@ -826,8 +827,10 @@ const App = (() => {
 
   function runTimer(){
     if(state.timerInterval)clearInterval(state.timerInterval);
+    state.actualElapsed=0; // Reset actual elapsed when timer starts
     state.timerInterval=setInterval(()=>{
       if(state.isPaused)return;
+      state.actualElapsed++; // Always increment by 1 second (real time)
       if(state.timerType==='forward'){state.timerSeconds+=state.timeSpeedMultiplier;}
       else{state.timerSeconds-=state.timeSpeedMultiplier;if(state.timerSeconds<=0){state.timerSeconds=0;updateTimerDisplay();completeFocus();return;}}
       updateTimerDisplay();
@@ -871,14 +874,14 @@ const App = (() => {
   }
 
   async function stopFocus(){
-    const elapsed=state.timerType==='forward'?state.timerSeconds:(state.countdownMinutes*60-state.timerSeconds);
+    const elapsed=state.actualElapsed>0?state.actualElapsed:(state.timerType==='forward'?state.timerSeconds:(state.countdownMinutes*60-state.timerSeconds));
     if(elapsed<MIN_SESSION_DURATION_SEC){await abandonSession();stopTimer();clearParticles();navigate('mode');return;}
     await completeFocus();
   }
 
   async function completeFocus(){
     stopTimer();
-    const elapsed=state.timerType==='forward'?state.timerSeconds:(state.countdownMinutes*60-state.timerSeconds);
+    const elapsed=state.actualElapsed>0?state.actualElapsed:(state.timerType==='forward'?state.timerSeconds:(state.countdownMinutes*60-state.timerSeconds));
     try{await apiCall('/sessions/'+state.sessionId+'/complete',{method:'PUT',body:JSON.stringify({actual_duration:elapsed})});}catch{}
     const sess={id:state.sessionId||('local-'+Date.now()),mode:state.selectedMode,timer_type:state.timerType,actual_duration:elapsed,completed_at:new Date().toISOString()};
     const saved=retrieve('sessions')||[];saved.unshift(sess);persist('sessions',saved.slice(0,200));

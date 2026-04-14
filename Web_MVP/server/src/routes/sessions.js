@@ -67,7 +67,7 @@ router.put('/:id/complete', async (req, res) => {
 
   // Start a transaction-like operation
   try {
-    // 1. Complete the session
+    // 1. Complete the session (only if duration >= 10 seconds)
     const { data: session, error: sessionError } = await supabase
       .from('focus_sessions')
       .update({
@@ -83,6 +83,12 @@ router.put('/:id/complete', async (req, res) => {
     if (sessionError || !session) {
       console.error('[sessions/complete]', sessionError);
       return res.status(404).json({ error: 'Session not found or unauthorized' });
+    }
+
+    // 3. Only update stats if duration >= 10 seconds (filter out very short sessions)
+    if (actual_duration < 10) {
+      console.log('[sessions/complete] Session too short, skipping stats update:', actual_duration);
+      return res.json({ session, skipped_stats: true });
     }
 
     // 2. Update user's cumulative stats
