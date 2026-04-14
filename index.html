@@ -877,14 +877,22 @@ const App = (() => {
   }
 
   async function stopFocus(){
-    const elapsed=state.actualElapsed>0?state.actualElapsed:(state.timerType==='forward'?state.timerSeconds:(state.countdownMinutes*60-state.timerSeconds));
+    // 测试模式下使用显示时间（已×30），正常模式使用实际时间
+    const elapsed = state.testMode 
+      ? (state.timerType==='forward' ? state.timerSeconds : (state.countdownMinutes*60-state.timerSeconds))
+      : (state.actualElapsed>0 ? state.actualElapsed : (state.timerType==='forward' ? state.timerSeconds : (state.countdownMinutes*60-state.timerSeconds)));
+    
     if(elapsed<MIN_SESSION_DURATION_SEC){await abandonSession();stopTimer();clearParticles();navigate('mode');return;}
     await completeFocus();
   }
 
   async function completeFocus(){
     stopTimer();
-    const elapsed=state.actualElapsed>0?state.actualElapsed:(state.timerType==='forward'?state.timerSeconds:(state.countdownMinutes*60-state.timerSeconds));
+    // 测试模式下使用显示时间（已×30），正常模式使用实际时间
+    const elapsed = state.testMode 
+      ? (state.timerType==='forward' ? state.timerSeconds : (state.countdownMinutes*60-state.timerSeconds))
+      : (state.actualElapsed>0 ? state.actualElapsed : (state.timerType==='forward' ? state.timerSeconds : (state.countdownMinutes*60-state.timerSeconds)));
+    
     try{await apiCall('/sessions/'+state.sessionId+'/complete',{method:'PUT',body:JSON.stringify({actual_duration:elapsed})});}catch{}
     const sess={id:state.sessionId||('local-'+Date.now()),mode:state.selectedMode,timer_type:state.timerType,actual_duration:elapsed,completed_at:new Date().toISOString()};
     const saved=retrieve('sessions')||[];saved.unshift(sess);persist('sessions',saved.slice(0,200));
