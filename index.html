@@ -1020,7 +1020,12 @@ const App = (() => {
   }
 
   document.addEventListener('DOMContentLoaded',init);
-  return {navigate,switchAuthTab,login,register,logout,selectMode,selectTimerType,setDurationPreset,startFocus,pauseTimer,stopFocus,closeCompletionDialog};
+  return {
+    navigate, switchAuthTab, login, register, logout,
+    selectMode, selectTimerType, setDurationPreset, startFocus,
+    pauseTimer, stopFocus, closeCompletionDialog,
+    toggleTestMode, confirmReset
+  };
 })();
 </script>
 </body>
