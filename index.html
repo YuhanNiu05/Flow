@@ -225,6 +225,13 @@
       .timer-controls { flex-wrap:wrap; justify-content:center; }
       .auth-card { padding:28px 20px; }
     }
+    /* SETTINGS */
+    .toggle-switch { position:relative; display:inline-block; width:52px; height:28px; }
+    .toggle-switch input { opacity:0; width:0; height:0; }
+    .toggle-slider { position:absolute; cursor:pointer; inset:0; background:rgba(255,255,255,0.1); border-radius:28px; transition:0.3s; border:1px solid var(--border); }
+    .toggle-slider:before { position:absolute; content:""; height:20px; width:20px; left:4px; bottom:3px; background:var(--text-dim); border-radius:50%; transition:0.3s; }
+    input:checked + .toggle-slider { background:rgba(100,200,255,0.2); border-color:var(--blue); }
+    input:checked + .toggle-slider:before { transform:translateX(24px); background:var(--blue); }
   </style>
 </head>
 <body>
@@ -296,6 +303,9 @@
       <div class="user-info">
         <span id="home-username">唤醒者</span>
         <div class="avatar" id="home-avatar">?</div>
+        <button class="btn btn-ghost" style="padding:8px 14px;font-size:12px" onclick="App.navigate('settings')" title="设置">
+          <i class="fas fa-cog"></i>
+        </button>
         <button class="btn btn-ghost" style="padding:8px 14px;font-size:12px" onclick="App.logout()">
           <i class="fas fa-sign-out-alt"></i>
         </button>
@@ -485,6 +495,73 @@
   </div>
 </div>
 
+<!-- VIEW: SETTINGS -->
+<div id="view-settings" class="view">
+  <div class="home-header">
+    <span class="brand orbitron">FLOWCUBE</span>
+    <div class="header-right">
+      <button class="btn btn-ghost" style="padding:8px 14px;font-size:12px" onclick="App.navigate('home')">
+        <i class="fas fa-arrow-left"></i> 返回
+      </button>
+    </div>
+  </div>
+  <div class="home-body" style="max-width:600px">
+    <div class="home-greeting">
+      <div class="greet-line1">⚙️ 设置</div>
+      <div class="greet-line2">自定义你的专注体验</div>
+    </div>
+    
+    <!-- 测试模式卡片 -->
+    <div class="card" style="padding:24px; margin-bottom:20px">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px">
+        <div>
+          <div style="font-size:16px; font-weight:700; color:var(--blue); margin-bottom:4px">
+            <i class="fas fa-flask"></i> 测试模式
+          </div>
+          <div style="font-size:12px; color:var(--text-dim)">
+            时间流速 ×30，方便功能演示和测试
+          </div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="test-mode-toggle" onchange="App.toggleTestMode(this.checked)">
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div id="test-mode-warning" class="error-msg show" style="margin-top:12px; font-size:12px">
+        <i class="fas fa-exclamation-triangle"></i> 测试模式开启时，1 秒 = 实际 30 秒。关闭后恢复正常流速。
+      </div>
+    </div>
+    
+    <!-- 数据管理卡片 -->
+    <div class="card" style="padding:24px; margin-bottom:20px">
+      <div style="font-size:16px; font-weight:700; color:var(--danger); margin-bottom:12px">
+        <i class="fas fa-database"></i> 数据管理
+      </div>
+      <div style="font-size:13px; color:var(--text-dim); margin-bottom:16px">
+        重置所有专注记录和统计数据
+      </div>
+      <button class="btn btn-danger" onclick="App.confirmReset()" style="width:100%">
+        <i class="fas fa-trash-alt"></i> 重置所有记录
+      </button>
+      <div style="font-size:11px; color:var(--text-dim); margin-top:12px; text-align:center">
+        ⚠️ 此操作不可恢复，请谨慎使用
+      </div>
+    </div>
+    
+    <!-- 关于卡片 -->
+    <div class="card" style="padding:24px">
+      <div style="font-size:16px; font-weight:700; color:var(--purple); margin-bottom:12px">
+        <i class="fas fa-info-circle"></i> 关于 FlowCube
+      </div>
+      <div style="font-size:12px; color:var(--text-dim); line-height:1.8">
+        <div>版本：v1.0.0</div>
+        <div>心流魔方 · 专注成就星球</div>
+        <div style="margin-top:8px">用专注点亮你的赛博星球</div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- COMPLETION DIALOG -->
 <div class="dialog-overlay" id="completion-dialog">
   <div class="dialog-box">
@@ -518,7 +595,8 @@ const App = (() => {
     currentView:'auth', authToken:null, user:null,
     selectedMode:null, timerType:'forward', countdownMinutes:25,
     timerSeconds:0, timerInterval:null, isPaused:false,
-    sessionId:null, ws:null, hwConnected:false
+    sessionId:null, ws:null, hwConnected:false,
+    testMode:false, timeSpeedMultiplier:1
   };
 
   const healingMessages = [
@@ -559,6 +637,28 @@ const App = (() => {
     if(view==='home')   loadHomeStats();
     if(view==='planet') loadPlanet();
     if(view==='stats')  loadStats();
+    if(view==='settings') loadSettings();
+  }
+
+  function loadSettings(){
+    // Load test mode state from localStorage
+    const testMode = retrieve('testMode') || false;
+    state.testMode = testMode;
+    state.timeSpeedMultiplier = testMode ? 30 : 1;
+    document.getElementById('test-mode-toggle').checked = testMode;
+  }
+
+  function toggleTestMode(enabled){
+    state.testMode = enabled;
+    state.timeSpeedMultiplier = enabled ? 30 : 1;
+    persist('testMode', enabled);
+    showToast(enabled ? '测试模式已开启 (×30)' : '测试模式已关闭');
+    
+    // If timer is running, update the interval
+    if(state.timerInterval && state.currentView === 'timer'){
+      clearInterval(state.timerInterval);
+      state.timerInterval = setInterval(App.tickTimer, 1000 / state.timeSpeedMultiplier);
+    }
   }
 
   function switchAuthTab(tab){
@@ -655,6 +755,34 @@ const App = (() => {
     document.querySelectorAll('.preset-btn').forEach(b=>b.classList.toggle('selected',parseInt(b.textContent)===mins));
   }
 
+  function confirmReset(){
+    if(confirm('⚠️ 确定要重置所有记录吗？\n\n此操作将删除：\n- 所有专注会话记录\n- 累计学习时长\n- 累计运动时长\n- 专注次数统计\n\n此操作不可恢复！')){
+      resetAllData();
+    }
+  }
+
+  async function resetAllData(){
+    setLoading(true);
+    try{
+      // Delete all sessions via API
+      const {ok:sessionsOk}=await apiCall('/sessions',{method:'DELETE'});
+      
+      if(sessionsOk){
+        showToast('数据已重置', 3000);
+        // Reload stats if on stats page
+        if(state.currentView==='stats') loadStats();
+        if(state.currentView==='home') loadHomeStats();
+      }else{
+        showToast('重置失败，请重试');
+      }
+    }catch(err){
+      console.error('Reset error:', err);
+      showToast('重置失败，请检查网络连接');
+    }finally{
+      setLoading(false);
+    }
+  }
+
   async function startFocus(){
     if(!state.selectedMode){showToast('请先选择专注模式');return;}
     if(state.timerType==='countdown'){
@@ -700,8 +828,8 @@ const App = (() => {
     if(state.timerInterval)clearInterval(state.timerInterval);
     state.timerInterval=setInterval(()=>{
       if(state.isPaused)return;
-      if(state.timerType==='forward'){state.timerSeconds++;}
-      else{state.timerSeconds--;if(state.timerSeconds<=0){state.timerSeconds=0;updateTimerDisplay();completeFocus();return;}}
+      if(state.timerType==='forward'){state.timerSeconds+=state.timeSpeedMultiplier;}
+      else{state.timerSeconds-=state.timeSpeedMultiplier;if(state.timerSeconds<=0){state.timerSeconds=0;updateTimerDisplay();completeFocus();return;}}
       updateTimerDisplay();
     },1000);
   }
@@ -878,6 +1006,11 @@ const App = (() => {
   }
 
   function init(){
+    // Load test mode setting
+    const testMode = retrieve('testMode') || false;
+    state.testMode = testMode;
+    state.timeSpeedMultiplier = testMode ? 30 : 1;
+    
     navigate('auth');
     document.getElementById('login-password').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
     document.getElementById('reg-confirm').addEventListener('keydown',e=>{if(e.key==='Enter')register();});

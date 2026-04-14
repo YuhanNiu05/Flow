@@ -127,6 +127,47 @@ router.delete('/:id', async (req, res) => {
   return res.json({ success: true });
 });
 
+// DELETE /api/sessions — delete ALL sessions for the current user (reset)
+router.delete('/', async (req, res) => {
+  const userId = req.user.sub;
+
+  if (!supabase) {
+    return res.json({ success: true, demo: true });
+  }
+
+  try {
+    // Delete all sessions for this user
+    const { error } = await supabase
+      .from('focus_sessions')
+      .delete()
+      .eq('user_id', userId);
+
+    if (error) {
+      console.error('[sessions/delete_all]', error);
+      return res.status(500).json({ error: 'Failed to delete sessions' });
+    }
+
+    // Reset user stats
+    const { error: userError } = await supabase
+      .from('users')
+      .update({ 
+        total_study_duration: 0, 
+        total_exercise_duration: 0, 
+        total_sessions: 0 
+      })
+      .eq('id', userId);
+
+    if (userError) {
+      console.error('[sessions/reset_user_stats]', userError);
+    }
+
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[sessions/delete_all]', err);
+    return res.status(500).json({ error: 'Failed to delete sessions' });
+  }
+});
+
 // GET /api/sessions — list completed sessions for the current user
 router.get('/', async (req, res) => {
   const userId = req.user.sub;
