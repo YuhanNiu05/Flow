@@ -764,12 +764,15 @@ const App = (() => {
   async function resetAllData(){
     setLoading(true);
     try{
-      // Delete all sessions via API
+      // 1. Delete all sessions via API
       const {ok:sessionsOk}=await apiCall('/sessions',{method:'DELETE'});
+      
+      // 2. Clear local storage cache
+      persist('sessions', []);
       
       if(sessionsOk){
         showToast('数据已重置', 3000);
-        // Reload stats if on stats page
+        // 3. Reload stats
         if(state.currentView==='stats') loadStats();
         if(state.currentView==='home') loadHomeStats();
       }else{
@@ -929,21 +932,30 @@ const App = (() => {
   }
 
   async function loadHomeStats(){
-    const sessions=retrieve('sessions')||[];
-    const now=new Date();const todayStart=new Date(now.getFullYear(),now.getMonth(),now.getDate());
-    const todayDur=sessions.filter(s=>new Date(s.completed_at)>=todayStart).reduce((a,s)=>a+(s.actual_duration||0),0);
-    const weekCount=sessions.filter(s=>Date.now()-new Date(s.completed_at)<7*86400000).length;
-    const totalDur=sessions.reduce((a,s)=>a+(s.actual_duration||0),0);
-    document.getElementById('stat-today').textContent=fmtMins(todayDur);
-    document.getElementById('stat-sessions').textContent=weekCount;
-    document.getElementById('stat-health').textContent=computeHealth(totalDur)+'%';
-    try{const {ok,data}=await apiCall('/stats');if(ok){document.getElementById('stat-today').textContent=fmtMins(data.today_duration);document.getElementById('stat-sessions').textContent=data.total_sessions;document.getElementById('stat-health').textContent=computeHealth(data.total_duration)+'%';}}catch{}
+    // 只从服务器获取数据，不使用本地缓存
+    try{
+      const {ok,data}=await apiCall('/stats');
+      if(ok){
+        document.getElementById('stat-today').textContent=fmtMins(data.today_duration);
+        document.getElementById('stat-sessions').textContent=data.total_sessions;
+        document.getElementById('stat-health').textContent=computeHealth(data.total_duration)+'%';
+      }
+    }catch(err){
+      console.error('Failed to load stats:', err);
+      // 如果服务器失败，显示 0
+      document.getElementById('stat-today').textContent='0m';
+      document.getElementById('stat-sessions').textContent='0';
+      document.getElementById('stat-health').textContent='0%';
+    }
   }
 
   async function loadPlanet(){
-    const sessions=retrieve('sessions')||[];
-    let total=sessions.reduce((a,s)=>a+(s.actual_duration||0),0);
-    try{const {ok,data}=await apiCall('/stats');if(ok)total=data.total_duration;}catch{}
+    // 只从服务器获取数据
+    let total=0;
+    try{
+      const {ok,data}=await apiCall('/stats');
+      if(ok) total=data.total_duration;
+    }catch{}
     const health=computeHealth(total);
     const totalMins=Math.floor(total/60);
     let si=0;for(let i=stageConfig.length-1;i>=0;i--){if(totalMins>=stageConfig[i].threshold){si=i;break;}}
