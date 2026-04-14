@@ -232,6 +232,120 @@
     .toggle-slider:before { position:absolute; content:""; height:20px; width:20px; left:4px; bottom:3px; background:var(--text-dim); border-radius:50%; transition:0.3s; }
     input:checked + .toggle-slider { background:rgba(100,200,255,0.2); border-color:var(--blue); }
     input:checked + .toggle-slider:before { transform:translateX(24px); background:var(--blue); }
+    
+    /* PLANET STYLES - Timer Page (Real-time growth) */
+    .planet-orb {
+      width: 180px;
+      height: 180px;
+      border-radius: 50%;
+      position: relative;
+      margin: 40px auto 20px;
+      transition: all 0.5s ease;
+      overflow: hidden;
+    }
+    
+    /* Stage 0: Gray planet with rain (0-3 min) */
+    .planet-orb.stage-0 {
+      background: radial-gradient(circle at 30% 30%, #6b7280 0%, #4b5563 50%, #374151 100%);
+      box-shadow: 0 0 30px rgba(107, 114, 128, 0.5);
+    }
+    .planet-orb.stage-0::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: 20%;
+      width: 2px;
+      height: 100%;
+      background: linear-gradient(to bottom, transparent, rgba(147, 197, 253, 0.6), transparent);
+      animation: rain 0.8s linear infinite;
+    }
+    .planet-orb.stage-0::after {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: 50%;
+      width: 2px;
+      height: 100%;
+      background: linear-gradient(to bottom, transparent, rgba(147, 197, 253, 0.6), transparent);
+      animation: rain 0.8s linear infinite 0.3s;
+    }
+    
+    /* Stage 1: Sunny (3-5 min) */
+    .planet-orb.stage-1 {
+      background: radial-gradient(circle at 30% 30%, #9ca3af 0%, #6b7280 50%, #4b5563 100%);
+      box-shadow: 0 0 40px rgba(251, 191, 36, 0.4);
+    }
+    .planet-orb.stage-1::before {
+      content: '';
+      position: absolute;
+      top: -20px;
+      right: -20px;
+      width: 60px;
+      height: 60px;
+      background: radial-gradient(circle, rgba(251, 191, 36, 0.8), transparent 70%);
+      border-radius: 50%;
+    }
+    
+    /* Stage 2: Grass (5-8 min) */
+    .planet-orb.stage-2 {
+      background: radial-gradient(circle at 30% 30%, #86efac 0%, #4ade80 40%, #22c55e 70%, #16a34a 100%);
+      box-shadow: 0 0 40px rgba(74, 222, 128, 0.5);
+    }
+    .planet-orb.stage-2::before {
+      content: '';
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 15px solid transparent;
+      border-right: 15px solid transparent;
+      border-bottom: 30px solid #16a34a;
+      filter: drop-shadow(0 0 5px rgba(22, 163, 74, 0.6));
+    }
+    
+    /* Stage 3: Tree + Spirit (12-15 min) */
+    .planet-orb.stage-3 {
+      background: radial-gradient(circle at 30% 30%, #bbf7d0 0%, #86efac 40%, #4ade80 70%, #22c55e 100%);
+      box-shadow: 0 0 60px rgba(34, 197, 94, 0.7), 0 0 100px rgba(251, 191, 36, 0.5);
+    }
+    .planet-orb.stage-3::before {
+      content: '';
+      position: absolute;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 20px solid transparent;
+      border-right: 20px solid transparent;
+      border-bottom: 40px solid #16a34a;
+    }
+    .planet-orb.stage-3::after {
+      content: '';
+      position: absolute;
+      bottom: 70px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 25px solid transparent;
+      border-right: 25px solid transparent;
+      border-bottom: 50px solid #15803d;
+    }
+    
+    @keyframes rain {
+      0% { transform: translateY(-50px); opacity: 0; }
+      50% { opacity: 1; }
+      100% { transform: translateY(100px); opacity: 0; }
+    }
+    
+    /* PLANET STYLES - Planet Page (Long-term growth) */
+    .planet-stage-0 { /* 荒芜期 */ }
+    .planet-stage-1 { /* 萌芽期 */ }
+    .planet-stage-2 { /* 生机期 */ }
+    .planet-stage-3 { /* 心流期 */ }
   </style>
 </head>
 <body>
@@ -858,16 +972,37 @@ const App = (() => {
   
   function updateTimerPlanet(seconds){
     const orb=document.getElementById('timer-planet-orb');
+    const label=document.getElementById('timer-label');
     if(!orb)return;
     
-    // 根据专注时长计算星球阶段
+    // 根据专注时长计算星球阶段（0-15 分钟）
     let stage=0;
-    if(seconds>=900) stage=3; // 15分钟
-    else if(seconds>=300) stage=2; // 5分钟
-    else if(seconds>=60) stage=1; // 1分钟
+    let message='专注中...';
+    
+    if(seconds>=720){ // 12 分钟
+      stage=3;
+      message='🎉 小树长成！你做到了！';
+    }else if(seconds>=480){ // 8 分钟
+      stage=2;
+      message='🌱 小苗在微风中摇曳～';
+    }else if(seconds>=300){ // 5 分钟
+      stage=2;
+      message='🌿 第一抹绿色出现了！';
+    }else if(seconds>=180){ // 3 分钟
+      stage=1;
+      message='☀️ 阳光洒向星球，好温暖！';
+    }else{
+      stage=0;
+      message='💧 专注的种子正在萌芽...';
+    }
     
     // 更新星球样式
     orb.className='planet-orb stage-'+stage;
+    
+    // 更新鼓励语（只在 forward 模式显示）
+    if(label && state.timerType==='forward'){
+      label.textContent=message;
+    }
   }
 
   function pauseTimer(){
@@ -966,7 +1101,14 @@ const App = (() => {
     }catch{}
     const health=computeHealth(total);
     const totalMins=Math.floor(total/60);
-    let si=0;for(let i=stageConfig.length-1;i>=0;i--){if(totalMins>=stageConfig[i].threshold){si=i;break;}}
+    
+    // 计算星球阶段（基于累计时长，更缓慢的成长）
+    // 0-5h: 荒芜期，5-15h: 萌芽期，15-30h: 生机期，30h+: 心流期
+    let si=0;
+    if(totalMins>=1800) si=3; // 30 小时
+    else if(totalMins>=900) si=2; // 15 小时
+    else if(totalMins>=300) si=1; // 5 小时
+    
     const st=stageConfig[si];
     document.getElementById('planet-health-pct').textContent=health+'%';
     document.getElementById('planet-health-fill').style.width=health+'%';
@@ -974,7 +1116,26 @@ const App = (() => {
     document.getElementById('planet-lore').textContent=st.lore;
     document.getElementById('planet-stage-text').textContent='阶段 '+si+' · '+['荒芜期','萌芽期','生机期','心流期'][si];
     document.getElementById('planet-total').textContent=fmtMins(total);
-    document.getElementById('planet-orb').className='planet-orb stage-'+si;
+    
+    // 更新星球样式（使用不同的阶段类名）
+    const orb=document.getElementById('planet-orb');
+    if(orb){
+      orb.className='planet-orb planet-stage-'+si;
+      // 根据阶段应用不同的背景
+      if(si===0){
+        orb.style.background='radial-gradient(circle at 30% 30%, #6b7280 0%, #4b5563 50%, #374151 100%)';
+        orb.style.boxShadow='0 0 30px rgba(107, 114, 128, 0.5)';
+      }else if(si===1){
+        orb.style.background='radial-gradient(circle at 30% 30%, #86efac 0%, #4ade80 30%, #22c55e 70%, #16a34a 100%)';
+        orb.style.boxShadow='0 0 40px rgba(74, 222, 128, 0.4)';
+      }else if(si===2){
+        orb.style.background='radial-gradient(circle at 30% 30%, #bbf7d0 0%, #86efac 40%, #4ade80 70%, #22c55e 100%)';
+        orb.style.boxShadow='0 0 50px rgba(34, 197, 94, 0.6)';
+      }else if(si===3){
+        orb.style.background='radial-gradient(circle at 30% 30%, #dcfce7 0%, #bbf7d0 40%, #86efac 70%, #4ade80 100%)';
+        orb.style.boxShadow='0 0 60px rgba(34, 197, 94, 0.8), 0 0 100px rgba(251, 191, 36, 0.5)';
+      }
+    }
   }
 
   async function loadStats(){
