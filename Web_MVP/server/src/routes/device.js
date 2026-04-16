@@ -31,11 +31,14 @@ module.exports = function createDeviceRouter(broadcastOrientation) {
 
     // Build the payload broadcast to WebSocket subscribers.
     // Include all body fields so optional data (ax, ay, az, battery, …) flows through.
+    // `face` mirrors the `orientation` value so the browser handler (which reads msg.face)
+    // works regardless of whether the device uses the HTTP or WebSocket path.
     const payload = {
       type: 'orientation',
       deviceId,
       event,
       orientation,
+      face: orientation,
       ts,
       receivedAt: Date.now()
     };

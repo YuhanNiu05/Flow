@@ -1167,7 +1167,7 @@ const App = (() => {
     const deviceId='app-'+(state.user.id||Date.now());
     try{
       const ws=new WebSocket(WS_URL);state.ws=ws;
-      ws.onopen=()=>ws.send(JSON.stringify({type:'handshake',client_type:'app',device_id:deviceId}));
+      ws.onopen=()=>ws.send(JSON.stringify({type:'handshake',client_type:'app'}));
       ws.onmessage=evt=>{let msg;try{msg=JSON.parse(evt.data);}catch{return;}if(msg.type==='handshake_ack'){state.hwConnected=true;updateHwBadge(true);showToast('M5Stack 已连接 ✅');}if(msg.type==='orientation')handleHardwareFlip(msg.face);};
       ws.onclose=()=>{state.hwConnected=false;state.ws=null;updateHwBadge(false);};
       ws.onerror=()=>{state.ws=null;updateHwBadge(false);};

@@ -33,7 +33,7 @@
 //   FACE_END     : 右侧朝上  → action = "end"
 enum Face { FACE_IDLE, FACE_STUDY, FACE_SPORT, FACE_END, FACE_UNKNOWN };
 
-const char* faceActions[] = { "",       "study",    "sport",   "end",      "" };
+const char* faceActions[] = { "",       "study",    "exercise",  "rest",     "" };
 const char* faceLabels[]  = { "待机",  "学  习",   "运  动",  "结  束",  "未知" };
 
 // ── 全局状态 ──────────────────────────────────────────────────────
