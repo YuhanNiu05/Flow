@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FlowCube · 设备翻转事件监听</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      color: #222;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+    h1 { font-size: 1.6rem; margin-bottom: 0.25rem; }
+    .subtitle { color: #666; font-size: 0.9rem; margin-bottom: 2rem; }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 1.5rem;
+      width: 100%;
+      max-width: 560px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+      margin-bottom: 1.25rem;
+    }
+    .card h2 { font-size: 1rem; margin-bottom: 1rem; color: #444; }
+
+    .row { display: flex; gap: 0.75rem; align-items: center; }
+    input[type="text"] {
+      flex: 1;
+      padding: 0.55rem 0.85rem;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      outline: none;
+    }
+    input[type="text"]:focus { border-color: #4f8ef7; }
+
+    button {
+      padding: 0.55rem 1.2rem;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: background 0.15s;
+    }
+    #connectBtn  { background: #4f8ef7; color: #fff; }
+    #connectBtn:hover { background: #3a7de0; }
+    #connectBtn.danger { background: #e05252; }
+    #connectBtn.danger:hover { background: #c73f3f; }
+
+    .status-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.9rem; font-size: 0.85rem; }
+    .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #ccc; flex-shrink: 0;
+      transition: background 0.3s;
+    }
+    .dot.connected { background: #4caf50; }
+    .dot.connecting { background: #ff9800; }
+    .dot.error { background: #e05252; }
+
+    #eventList {
+      list-style: none;
+      max-height: 360px;
+      overflow-y: auto;
+    }
+    #eventList li {
+      padding: 0.65rem 0.9rem;
+      border-radius: 8px;
+      margin-bottom: 0.5rem;
+      font-size: 0.88rem;
+      font-family: 'Courier New', monospace;
+      word-break: break-all;
+      border-left: 4px solid #4f8ef7;
+      background: #f7f9fc;
+    }
+    #eventList li.error-item { border-left-color: #e05252; background: #fff5f5; }
+    #eventList .empty {
+      color: #aaa;
+      font-style: italic;
+      font-family: inherit;
+      border: none;
+      background: none;
+      padding: 0.4rem 0;
+    }
+
+    .tip {
+      font-size: 0.8rem;
+      color: #888;
+      line-height: 1.6;
+      margin-top: 0.5rem;
+    }
+    code { background: #eee; padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.82rem; }
+  </style>
+</head>
+<body>
+  <h1>🔄 FlowCube 设备翻转监听</h1>
+  <p class="subtitle">实时接收 M5Stack Core2 上报的翻转事件</p>
+
+  <div class="card">
+    <h2>连接设置</h2>
+    <div class="row">
+      <input id="deviceIdInput" type="text" placeholder="deviceId（留空接收全部）" />
+      <button id="connectBtn" onclick="toggleConnect()">连接</button>
+    </div>
+    <div class="status-row">
+      <span class="dot" id="dot"></span>
+      <span id="statusText">未连接</span>
+    </div>
+    <p class="tip" style="margin-top:0.85rem">
+      连接后，用 curl 测试：<br/>
+      <code>curl -X POST http://localhost:3000/device/orientation \</code><br/>
+      <code>&nbsp;-H 'Content-Type: application/json' \</code><br/>
+      <code>&nbsp;-d '{"deviceId":"core2-001","event":"flip","orientation":"face_down","ts":123456}'</code>
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>收到的事件 <span id="count" style="color:#999;font-weight:400"></span></h2>
+    <ul id="eventList">
+      <li class="empty">暂无事件，等待设备上报…</li>
+    </ul>
+  </div>
+
+  <script>
+    // ── Read deviceId from URL param if present ─────────────────────────────
+    const params = new URLSearchParams(location.search);
+    const urlDeviceId = params.get('deviceId');
+    if (urlDeviceId) {
+      document.getElementById('deviceIdInput').value = urlDeviceId;
+    }
+
+    let ws = null;
+    let eventCount = 0;
+
+    function setStatus(state, text) {
+      const dot = document.getElementById('dot');
+      dot.className = 'dot ' + state;
+      document.getElementById('statusText').textContent = text;
+    }
+
+    function addEvent(data, isError) {
+      const list = document.getElementById('eventList');
+      // Remove "empty" placeholder
+      const empty = list.querySelector('.empty');
+      if (empty) empty.remove();
+
+      eventCount++;
+      document.getElementById('count').textContent = `(${eventCount})`;
+
+      const li = document.createElement('li');
+      if (isError) li.classList.add('error-item');
+
+      const now = new Date().toLocaleTimeString();
+      li.textContent = `[${now}]  ${JSON.stringify(data, null, 0)}`;
+      list.insertBefore(li, list.firstChild);   // newest on top
+    }
+
+    function getWsUrl() {
+      const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+      const host = location.host || 'localhost:3000';
+      const deviceId = document.getElementById('deviceIdInput').value.trim();
+      const qs = deviceId ? `?deviceId=${encodeURIComponent(deviceId)}` : '';
+      return `${proto}://${host}/ws${qs}`;
+    }
+
+    function toggleConnect() {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close();
+        return;
+      }
+      connect();
+    }
+
+    function connect() {
+      const url = getWsUrl();
+      setStatus('connecting', `正在连接 ${url} …`);
+      document.getElementById('connectBtn').textContent = '连接中…';
+      document.getElementById('connectBtn').disabled = true;
+
+      ws = new WebSocket(url);
+
+      ws.onopen = () => {
+        const deviceId = document.getElementById('deviceIdInput').value.trim();
+        // If no deviceId in URL, send handshake as wildcard app client
+        if (!deviceId) {
+          ws.send(JSON.stringify({ type: 'handshake', client_type: 'app' }));
+        }
+        // If deviceId was in URL, server auto-registers via query param (no handshake needed)
+        setStatus('connecting', '握手中…');
+      };
+
+      ws.onmessage = (e) => {
+        let msg;
+        try { msg = JSON.parse(e.data); } catch { return; }
+
+        if (msg.type === 'handshake_ack') {
+          setStatus('connected', `已连接${msg.device_id ? ' · ' + msg.device_id : ' (全部设备)'}`);
+          const btn = document.getElementById('connectBtn');
+          btn.textContent = '断开';
+          btn.disabled = false;
+          btn.className = 'danger';
+          return;
+        }
+        if (msg.type === 'error') {
+          setStatus('error', '错误：' + msg.message);
+          addEvent(msg, true);
+          return;
+        }
+        if (msg.type === 'orientation') {
+          addEvent(msg, false);
+        }
+      };
+
+      ws.onerror = () => {
+        setStatus('error', '连接失败，请检查后端是否运行');
+        resetBtn();
+      };
+
+      ws.onclose = () => {
+        setStatus('', '已断开');
+        resetBtn();
+      };
+    }
+
+    function resetBtn() {
+      const btn = document.getElementById('connectBtn');
+      btn.textContent = '连接';
+      btn.disabled = false;
+      btn.className = '';
+    }
+  </script>
+</body>
+</html>
