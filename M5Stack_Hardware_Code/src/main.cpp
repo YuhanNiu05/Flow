@@ -1,59 +1,209 @@
 // FlowCube - M5Stack Core2 主程序
-// 功能：IMU 翻转检测 + WiFi + WebSocket 通信 + 屏幕显示
+// 功能：IMU 翻转检测 + 屏幕颜色 + 提示音 + 震动 + 串口输出 + WebSocket / HTTP 上报
 //
-// 依赖库（Arduino IDE / PlatformIO）：
-//   - M5Core2 (by M5Stack)
-//   - ArduinoJson (by Benoit Blanchon)
+// 交互规则：
+//   屏幕朝上 (Z > 0.8G)  → 蓝屏 + 清脆单音  + 短震 1 次 → {"action":"study"}
+//   左侧朝上 (X > 0.8G)  → 红屏 + 心跳双音  + 短震 2 次 → {"action":"sport"}
+//   右侧朝上 (X < -0.8G) → 绿屏 + 低沉长音  + 长震 1 次 → {"action":"end"}
+//
+// 依赖库（Arduino IDE 库管理器安装）：
+//   - M5Core2          (by M5Stack)
+//   - ArduinoJson      (by Benoit Blanchon)
 //   - WebSocketsClient (by Markus Sattler)
 //
 // 配置：将 config.h.example 复制为 config.h 并填入 WiFi 和服务器信息。
 
 #include <M5Core2.h>
 #include <WiFi.h>
+#include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <WebSocketsClient.h>
 #include "config.h"
 
-// ── 翻转检测阈值 ──────────────────────────────────────────────────
-#define TILT_THRESHOLD   0.6f   // |cos θ| 分量阈值（0~1）
+// ── 检测阈值 ──────────────────────────────────────────────────────
+#define TILT_THRESHOLD   0.8f   // 按规格：0.8 G
 #define STABLE_FRAMES    8      // 连续稳定帧数才触发事件
 #define POLL_INTERVAL_MS 100    // IMU 采样间隔（ms）
 #define PING_INTERVAL_MS 20000  // WebSocket keepalive 间隔（ms）
 
-// ── 面定义 ─────────────────────────────────────────────────────────
-// M5Stack Core2 放置约定：
-//   屏幕朝上 → 待机 (idle)
-//   屏幕朝下 → 学习模式 (study)
-//   左侧朝上 → 运动模式 (exercise)
-//   右侧朝上 → 休息 (rest)
-enum Face { FACE_IDLE, FACE_STUDY, FACE_EXERCISE, FACE_REST, FACE_UNKNOWN };
+// ── 姿态定义 ──────────────────────────────────────────────────────
+//   FACE_IDLE    : 未识别到有效姿态（等待状态）
+//   FACE_STUDY   : 屏幕朝上  → action = "study"
+//   FACE_SPORT   : 左侧朝上  → action = "sport"
+//   FACE_END     : 右侧朝上  → action = "end"
+enum Face { FACE_IDLE, FACE_STUDY, FACE_SPORT, FACE_END, FACE_UNKNOWN };
 
-const char* faceNames[] = { "idle", "study", "exercise", "rest", "unknown" };
-const char* faceLabels[] = { "待机", "学习模式", "运动模式", "休息", "未知" };
-
-// ── 颜色常量 ──────────────────────────────────────────────────────
-#define COLOR_BG      TFT_BLACK
-#define COLOR_BLUE    0x64C8FF  // #64c8ff 近似 → TFT 16-bit
-#define COLOR_GREEN   TFT_GREEN
-#define COLOR_ORANGE  0xFF8C3C
-#define COLOR_PURPLE  0xC88FFF
-#define COLOR_DIM     0x8899AA
-#define COLOR_WHITE   TFT_WHITE
+const char* faceActions[] = { "",       "study",    "sport",   "end",      "" };
+const char* faceLabels[]  = { "待机",  "学  习",   "运  动",  "结  束",  "未知" };
 
 // ── 全局状态 ──────────────────────────────────────────────────────
-Face       currentFace    = FACE_UNKNOWN;
-Face       lastSentFace   = FACE_UNKNOWN;
-int        stableCount    = 0;
-bool       wsConnected    = false;
-bool       wifiConnected  = false;
-uint32_t   timerSeconds   = 0;
-bool       timerRunning   = false;
-uint32_t   lastTimerTick  = 0;
-uint32_t   lastPingMs     = 0;
-uint32_t   lastImuMs      = 0;
-uint32_t   lastDisplayMs  = 0;
+Face     currentFace  = FACE_UNKNOWN;
+Face     lastSentFace = FACE_UNKNOWN;
+int      stableCount  = 0;
+bool     wsConnected  = false;
+bool     wifiConnected = false;
+uint32_t lastPingMs   = 0;
+uint32_t lastImuMs    = 0;
 
 WebSocketsClient wsClient;
+
+// ─────────────────────────────────────────────────────────────────
+// 震动马达（AXP192 LDO3 控制）
+// ─────────────────────────────────────────────────────────────────
+static inline void motorOn()  { M5.Axp.SetLDOEnable(3, true);  }
+static inline void motorOff() { M5.Axp.SetLDOEnable(3, false); }
+
+// count  : 震动次数
+// onMs   : 单次震动时长（ms）
+// offMs  : 两次之间间隔（ms）
+void vibrate(int count, int onMs, int offMs) {
+  for (int i = 0; i < count; i++) {
+    motorOn();
+    delay(onMs);
+    motorOff();
+    if (i < count - 1) delay(offMs);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 提示音（M5.Speaker.tone 为非阻塞，需配合 delay + mute）
+// ─────────────────────────────────────────────────────────────────
+
+// 清脆单音：1000 Hz × 150 ms
+void playStudySound() {
+  M5.Speaker.tone(1000, 150);
+  delay(200);
+  M5.Speaker.mute();
+}
+
+// 心跳双音：440 Hz，两下，中间短暂停顿
+void playSportSound() {
+  M5.Speaker.tone(440, 100);
+  delay(150);
+  M5.Speaker.mute();
+  delay(80);
+  M5.Speaker.tone(440, 100);
+  delay(150);
+  M5.Speaker.mute();
+}
+
+// 低沉长音：220 Hz × 500 ms
+void playEndSound() {
+  M5.Speaker.tone(220, 500);
+  delay(560);
+  M5.Speaker.mute();
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 屏幕绘制
+// ─────────────────────────────────────────────────────────────────
+void drawScreen(Face face) {
+  // 背景色
+  uint32_t bg;
+  switch (face) {
+    case FACE_STUDY: bg = TFT_BLUE;  break;
+    case FACE_SPORT: bg = TFT_RED;   break;
+    case FACE_END:   bg = TFT_GREEN; break;
+    default:         bg = TFT_BLACK; break;
+  }
+  M5.Lcd.fillScreen(bg);
+
+  // 待机 / 未知：简单提示
+  if (face == FACE_IDLE || face == FACE_UNKNOWN) {
+    M5.Lcd.setTextColor(0x888888);
+    M5.Lcd.setTextSize(2);
+    M5.Lcd.drawCentreString("FlowCube", 160, 90, 2);
+    M5.Lcd.setTextSize(1);
+    M5.Lcd.drawCentreString("翻转以开始", 160, 145, 1);
+    return;
+  }
+
+  // 文字颜色：绿色背景用黑字，其余用白字
+  uint32_t fg = (face == FACE_END) ? TFT_BLACK : TFT_WHITE;
+
+  // 大字：模式名
+  M5.Lcd.setTextColor(fg);
+  M5.Lcd.setTextSize(4);
+  M5.Lcd.drawCentreString(faceLabels[face], 160, 70, 4);
+
+  // 小字：action 值
+  M5.Lcd.setTextSize(2);
+  char actionBuf[24];
+  snprintf(actionBuf, sizeof(actionBuf), "action: %s", faceActions[face]);
+  M5.Lcd.drawCentreString(actionBuf, 160, 158, 2);
+
+  // 底部状态行：WiFi / WS
+  M5.Lcd.setTextSize(1);
+  M5.Lcd.setTextColor(fg);
+  M5.Lcd.drawString(wifiConnected ? "WiFi OK" : "WiFi --", 4,  222);
+  M5.Lcd.drawString(wsConnected   ? "WS OK"   : "WS --",  88, 222);
+}
+
+// ─────────────────────────────────────────────────────────────────
+// 姿态事件处理：屏幕 → 声音 → 震动 → 串口 → 网络上报
+// ─────────────────────────────────────────────────────────────────
+void handleFaceEvent(Face face) {
+  // 1. 屏幕颜色
+  drawScreen(face);
+
+  // 2. 声音 + 震动（仅有效姿态触发）
+  switch (face) {
+    case FACE_STUDY:
+      playStudySound();
+      vibrate(1, 100, 0);     // 短震 1 次
+      break;
+    case FACE_SPORT:
+      playSportSound();
+      vibrate(2, 100, 120);   // 短震 2 次
+      break;
+    case FACE_END:
+      playEndSound();
+      vibrate(1, 400, 0);     // 长震 1 次
+      break;
+    default:
+      return;  // FACE_IDLE / FACE_UNKNOWN 不输出事件
+  }
+
+  // 3. 串口 JSON 输出
+  StaticJsonDocument<64> serialDoc;
+  serialDoc["action"] = faceActions[face];
+  serializeJson(serialDoc, Serial);
+  Serial.println();
+
+  // 4. WebSocket 上报
+  if (wsConnected) {
+    StaticJsonDocument<128> wsDoc;
+    wsDoc["type"]      = "orientation";
+    wsDoc["device_id"] = DEVICE_ID;
+    wsDoc["face"]      = faceActions[face];
+    wsDoc["timestamp"] = millis();
+    char wsBuf[128];
+    serializeJson(wsDoc, wsBuf);
+    wsClient.sendTXT(wsBuf);
+    Serial.printf("[WS] Sent: %s\n", faceActions[face]);
+  }
+
+  // 5. HTTP POST 上报（/device/orientation）
+  if (wifiConnected) {
+    HTTPClient http;
+    char url[96];
+    snprintf(url, sizeof(url), "http://%s:%d/device/orientation", SERVER_HOST, SERVER_PORT);
+    http.begin(url);
+    http.addHeader("Content-Type", "application/json");
+
+    StaticJsonDocument<128> postDoc;
+    postDoc["deviceId"]    = DEVICE_ID;
+    postDoc["event"]       = "flip";
+    postDoc["orientation"] = faceActions[face];
+    postDoc["ts"]          = (uint32_t)(millis() / 1000);
+    char postBuf[128];
+    serializeJson(postDoc, postBuf);
+
+    int code = http.POST(postBuf);
+    Serial.printf("[HTTP] POST /device/orientation => %d\n", code);
+    http.end();
+  }
+}
 
 // ─────────────────────────────────────────────────────────────────
 // IMU 翻转检测
@@ -62,80 +212,13 @@ Face detectFace() {
   float ax, ay, az;
   M5.IMU.getAccelData(&ax, &ay, &az);
 
-  // Z 轴：正值 = 屏幕朝上，负值 = 屏幕朝下
-  if (az >  TILT_THRESHOLD) return FACE_IDLE;
-  if (az < -TILT_THRESHOLD) return FACE_STUDY;
+  // Z 轴正值 = 屏幕朝上
+  if (az >  TILT_THRESHOLD) return FACE_STUDY;
+  // X 轴正值 = 左侧朝上，负值 = 右侧朝上
+  if (ax >  TILT_THRESHOLD) return FACE_SPORT;
+  if (ax < -TILT_THRESHOLD) return FACE_END;
 
-  // X 轴：左右翻转
-  if (ax >  TILT_THRESHOLD) return FACE_EXERCISE;
-  if (ax < -TILT_THRESHOLD) return FACE_REST;
-
-  return FACE_UNKNOWN;
-}
-
-// ─────────────────────────────────────────────────────────────────
-// 屏幕绘制
-// ─────────────────────────────────────────────────────────────────
-void drawStatusBar() {
-  M5.Lcd.fillRect(0, 0, 320, 24, COLOR_BG);
-  M5.Lcd.setTextSize(1);
-  M5.Lcd.setTextColor(wifiConnected ? COLOR_GREEN : COLOR_DIM);
-  M5.Lcd.drawString(wifiConnected ? "WiFi OK" : "WiFi --", 4, 6);
-  M5.Lcd.setTextColor(wsConnected  ? COLOR_BLUE  : COLOR_DIM);
-  M5.Lcd.drawString(wsConnected    ? "WS OK"   : "WS --",  80, 6);
-}
-
-void drawFace(Face face) {
-  M5.Lcd.fillRect(0, 26, 320, 160, COLOR_BG);
-
-  uint32_t accent = COLOR_WHITE;
-  switch (face) {
-    case FACE_STUDY:    accent = COLOR_BLUE;    break;
-    case FACE_EXERCISE: accent = COLOR_ORANGE;  break;
-    case FACE_REST:     accent = COLOR_PURPLE;  break;
-    default:            accent = COLOR_DIM;     break;
-  }
-
-  M5.Lcd.setTextColor(accent);
-  M5.Lcd.setTextSize(2);
-  M5.Lcd.drawCentreString(faceLabels[face], 160, 60, 2);
-
-  // 图标提示
-  M5.Lcd.setTextSize(1);
-  M5.Lcd.setTextColor(COLOR_DIM);
-  const char* hint = "";
-  switch (face) {
-    case FACE_IDLE:     hint = "flip to start focus"; break;
-    case FACE_STUDY:    hint = "screen down -> study"; break;
-    case FACE_EXERCISE: hint = "left up -> exercise";  break;
-    case FACE_REST:     hint = "right up -> rest";     break;
-    default: break;
-  }
-  M5.Lcd.drawCentreString(hint, 160, 100, 1);
-}
-
-void drawTimer() {
-  M5.Lcd.fillRect(0, 186, 320, 54, COLOR_BG);
-  if (!timerRunning && timerSeconds == 0) return;
-
-  uint32_t h   = timerSeconds / 3600;
-  uint32_t min = (timerSeconds % 3600) / 60;
-  uint32_t sec = timerSeconds % 60;
-
-  char buf[12];
-  if (h > 0) snprintf(buf, sizeof(buf), "%02u:%02u:%02u", h, min, sec);
-  else       snprintf(buf, sizeof(buf), "%02u:%02u", min, sec);
-
-  uint32_t col = (currentFace == FACE_EXERCISE) ? COLOR_ORANGE : COLOR_BLUE;
-  M5.Lcd.setTextColor(col);
-  M5.Lcd.setTextSize(3);
-  M5.Lcd.drawCentreString(buf, 160, 196, 3);
-}
-
-void drawAll() {
-  drawStatusBar();
-  drawFace(currentFace);
-  drawTimer();
+  return FACE_IDLE;
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -152,18 +235,6 @@ void sendHandshake() {
   Serial.println("[WS] Handshake sent");
 }
 
-void sendOrientation(Face face) {
-  StaticJsonDocument<128> doc;
-  doc["type"]      = "orientation";
-  doc["device_id"] = DEVICE_ID;
-  doc["face"]      = faceNames[face];
-  doc["timestamp"] = millis();
-  char buf[128];
-  serializeJson(doc, buf);
-  wsClient.sendTXT(buf);
-  Serial.printf("[WS] Orientation sent: %s\n", faceNames[face]);
-}
-
 void sendPing() {
   StaticJsonDocument<64> doc;
   doc["type"] = "ping";
@@ -178,23 +249,21 @@ void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
       wsConnected = true;
       Serial.println("[WS] Connected");
       sendHandshake();
-      drawStatusBar();
+      drawScreen(currentFace);  // 刷新状态栏显示 WS OK
       break;
 
     case WStype_DISCONNECTED:
       wsConnected = false;
       Serial.println("[WS] Disconnected");
-      drawStatusBar();
+      drawScreen(currentFace);
       break;
 
     case WStype_TEXT: {
       StaticJsonDocument<256> doc;
       if (deserializeJson(doc, payload, length) == DeserializationError::Ok) {
         const char* msgType = doc["type"];
-        if (strcmp(msgType, "handshake_ack") == 0) {
-          Serial.println("[WS] Handshake acknowledged");
-        } else if (strcmp(msgType, "pong") == 0) {
-          // keepalive acknowledged
+        if (msgType && strcmp(msgType, "handshake_ack") == 0) {
+          Serial.println("[WS] Handshake ACK");
         }
       }
       break;
@@ -209,23 +278,25 @@ void onWsEvent(WStype_t type, uint8_t* payload, size_t length) {
 // ─────────────────────────────────────────────────────────────────
 void connectWiFi() {
   Serial.printf("[WiFi] Connecting to %s ...\n", WIFI_SSID);
-  M5.Lcd.setTextColor(COLOR_DIM);
+  M5.Lcd.fillScreen(TFT_BLACK);
+  M5.Lcd.setTextColor(0x888888);
+  M5.Lcd.setTextSize(2);
+  M5.Lcd.drawCentreString("FLOWCUBE", 160, 70, 2);
   M5.Lcd.setTextSize(1);
-  M5.Lcd.drawCentreString("Connecting to WiFi...", 160, 110, 1);
+  M5.Lcd.drawCentreString("WiFi 连接中...", 160, 130, 1);
 
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 30) {
     delay(500);
     attempts++;
-    M5.Lcd.drawCentreString(".....", 160, 130, 1);
   }
 
   wifiConnected = (WiFi.status() == WL_CONNECTED);
   if (wifiConnected) {
     Serial.printf("[WiFi] Connected, IP: %s\n", WiFi.localIP().toString().c_str());
   } else {
-    Serial.println("[WiFi] Connection failed, running offline");
+    Serial.println("[WiFi] Failed — running offline");
   }
 }
 
@@ -235,21 +306,18 @@ void connectWiFi() {
 void setup() {
   M5.begin();
   Serial.begin(115200);
-
   M5.IMU.Init();
-  M5.Lcd.fillScreen(COLOR_BG);
   M5.Lcd.setTextDatum(MC_DATUM);
 
-  // Splash screen
-  M5.Lcd.setTextColor(COLOR_BLUE);
+  // 开机画面
+  M5.Lcd.fillScreen(TFT_BLACK);
+  M5.Lcd.setTextColor(TFT_BLUE);
   M5.Lcd.setTextSize(3);
   M5.Lcd.drawCentreString("FLOWCUBE", 160, 80, 3);
   M5.Lcd.setTextSize(1);
-  M5.Lcd.setTextColor(COLOR_DIM);
-  M5.Lcd.drawCentreString("心流魔方 v1.0", 160, 130, 1);
+  M5.Lcd.setTextColor(0x888888);
+  M5.Lcd.drawCentreString("心流魔方 v2.0", 160, 140, 1);
   delay(1200);
-
-  M5.Lcd.fillScreen(COLOR_BG);
 
   connectWiFi();
 
@@ -260,26 +328,25 @@ void setup() {
     Serial.printf("[WS] Connecting to %s:%d%s\n", SERVER_HOST, SERVER_PORT, SERVER_PATH);
   }
 
-  currentFace = detectFace();
-  drawAll();
+  currentFace  = detectFace();
+  lastSentFace = FACE_UNKNOWN;
+  drawScreen(currentFace);
 }
 
 void loop() {
   M5.update();
-
   uint32_t now = millis();
 
-  // ── WebSocket loop ──
+  // ── WebSocket loop + keepalive ──
   if (wifiConnected) {
     wsClient.loop();
-    // Keepalive ping
     if (wsConnected && (now - lastPingMs > PING_INTERVAL_MS)) {
       sendPing();
       lastPingMs = now;
     }
   }
 
-  // ── IMU poll ──
+  // ── IMU 采样与稳定判断 ──
   if (now - lastImuMs >= POLL_INTERVAL_MS) {
     lastImuMs = now;
     Face raw = detectFace();
@@ -291,63 +358,12 @@ void loop() {
       currentFace = raw;
     }
 
-    // Trigger orientation event once face has been stable for N frames
+    // 连续稳定 STABLE_FRAMES 帧后触发一次事件
     if (stableCount == STABLE_FRAMES && currentFace != lastSentFace) {
       lastSentFace = currentFace;
-      Serial.printf("[IMU] Stable face: %s\n", faceNames[currentFace]);
-
-      // Update timer state
-      if (currentFace == FACE_STUDY || currentFace == FACE_EXERCISE) {
-        if (!timerRunning) {
-          timerSeconds  = 0;
-          timerRunning  = true;
-          lastTimerTick = now;
-        }
-      } else if (currentFace == FACE_REST || currentFace == FACE_IDLE) {
-        timerRunning = false;
-      }
-
-      // Send to app via WebSocket
-      if (wsConnected) sendOrientation(currentFace);
-      drawAll();
+      Serial.printf("[IMU] Stable face: %s\n", faceActions[currentFace]);
+      handleFaceEvent(currentFace);
     }
-  }
-
-  // ── Timer tick ──
-  if (timerRunning && (now - lastTimerTick >= 1000)) {
-    lastTimerTick += 1000;
-    timerSeconds++;
-    // Refresh timer display every second (light update only)
-    drawTimer();
-  }
-
-  // ── Button A: manual focus toggle ──
-  if (M5.BtnA.wasPressed()) {
-    if (!timerRunning) {
-      // Force study mode if idle
-      currentFace  = FACE_STUDY;
-      lastSentFace = FACE_STUDY;
-      timerSeconds = 0;
-      timerRunning = true;
-      lastTimerTick = now;
-      if (wsConnected) sendOrientation(FACE_STUDY);
-    } else {
-      timerRunning = false;
-      currentFace  = FACE_IDLE;
-      lastSentFace = FACE_IDLE;
-      if (wsConnected) sendOrientation(FACE_IDLE);
-    }
-    drawAll();
-  }
-
-  // ── Button B: reset timer ──
-  if (M5.BtnB.wasPressed()) {
-    timerRunning = false;
-    timerSeconds = 0;
-    currentFace  = FACE_IDLE;
-    lastSentFace = FACE_IDLE;
-    if (wsConnected) sendOrientation(FACE_IDLE);
-    drawAll();
   }
 
   delay(10);
